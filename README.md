@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="#installation"><strong>Installation</strong></a> &middot;
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
   <a href="https://paperclip.ing/docs"><strong>Docs</strong></a> &middot;
   <a href="https://github.com/paperclipai/paperclip"><strong>GitHub</strong></a> &middot;
@@ -29,7 +30,7 @@
 
 **If OpenClaw is an _employee_, Paperclip is the _company_**
 
-Paperclip is a Node.js server and React UI that orchestrates a team of AI agents to run a business. Bring your own agents, assign goals, and track your agents' work and costs from one dashboard.
+Paperclip is a **Rust backend** and **React UI** that orchestrates a team of AI agents to run a business. Bring your own agents, assign goals, and track your agents' work and costs from one dashboard.
 
 It looks like a task manager — but under the hood it has org charts, budgets, governance, goal alignment, and agent coordination.
 
@@ -63,6 +64,116 @@ It looks like a task manager — but under the hood it has org charts, budgets, 
 <em>If it can receive a heartbeat, it's hired.</em>
 
 </div>
+
+<br/>
+
+## Installation
+
+### Prerequisites
+
+- **Node.js** 20+ (for CLI, UI build, and optional legacy adapters)
+- **pnpm** 9.15+
+- **Rust** 1.75+ (for the API server; install via [rustup](https://rustup.rs))
+- **PostgreSQL** (optional): set `DATABASE_URL` to use your own. If unset, the app can use embedded PostgreSQL — see [doc/DATABASE.md](doc/DATABASE.md).
+
+### Steps
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/paperclipai/paperclip.git
+   cd paperclip
+   ```
+
+   Or your fork:
+
+   ```bash
+   git clone https://github.com/YOUR_USER/Synaptica.git
+   cd Synaptica
+   ```
+
+2. **Install dependencies**
+
+   ```bash
+   pnpm install
+   ```
+
+3. **Build the UI** (so the Rust server can serve the dashboard)
+
+   ```bash
+   pnpm dev:build-ui
+   ```
+
+4. **Start the app**
+
+   ```bash
+   pnpm dev
+   ```
+
+   The API and UI will be at **http://localhost:3100**.
+
+5. **(Optional) Use your own PostgreSQL**
+
+   ```bash
+   export DATABASE_URL=postgres://user:pass@localhost:5432/paperclip
+   pnpm db:migrate   # apply migrations once
+   pnpm dev
+   ```
+
+6. **(Optional) Enable legacy adapters** (Claude Local, Codex, Cursor, OpenClaw Gateway, OpenCode, Pi Local)
+
+   If you use agents with these adapter types, set the repo root so the Rust server can run the Node adapter script:
+
+   ```bash
+   export PAPERCLIP_PROJECT_ROOT=/absolute/path/to/paperclip   # e.g. /Users/you/paperclip
+   pnpm dev
+   ```
+
+### One-command run (first-time setup)
+
+```bash
+pnpm paperclipai run
+```
+
+This can auto-onboard, run checks, and start the server. See [doc/DEVELOPING.md](doc/DEVELOPING.md).
+
+### Docker
+
+```bash
+docker build -t paperclip-local .
+docker run --name paperclip -p 3100:3100 -e HOST=0.0.0.0 \
+  -e PAPERCLIP_HOME=/paperclip \
+  -v "$(pwd)/data/docker-paperclip:/paperclip" \
+  paperclip-local
+```
+
+Or with Compose:
+
+```bash
+docker compose -f docker-compose.quickstart.yml up --build
+```
+
+<br/>
+
+## Quickstart
+
+After [installation](#installation):
+
+```bash
+pnpm dev
+```
+
+Open **http://localhost:3100**. No account required for local trusted mode.
+
+- Create a company, add goals and projects, hire agents, assign tasks.
+- Agents run on heartbeats (wakeup/invoke). Use the dashboard to monitor runs and costs.
+
+**Quick checks:**
+
+```bash
+curl http://localhost:3100/api/health
+curl http://localhost:3100/api/companies
+```
 
 <br/>
 
@@ -142,16 +253,14 @@ Monitor and manage your autonomous businesses from anywhere.
 
 ## Why Paperclip is special
 
-Paperclip handles the hard orchestration details correctly.
-
 |                                   |                                                                                                               |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | **Atomic execution.**             | Task checkout and budget enforcement are atomic, so no double-work and no runaway spend.                      |
 | **Persistent agent state.**       | Agents resume the same task context across heartbeats instead of restarting from scratch.                     |
-| **Runtime skill injection.**      | Agents can learn Paperclip workflows and project context at runtime, without retraining.                      |
-| **Governance with rollback.**     | Approval gates are enforced, config changes are revisioned, and bad changes can be rolled back safely.        |
+| **Runtime skill injection.**     | Agents can learn Paperclip workflows and project context at runtime, without retraining.                       |
+| **Governance with rollback.**     | Approval gates are enforced, config changes are revisioned, and bad changes can be rolled back safely.       |
 | **Goal-aware execution.**         | Tasks carry full goal ancestry so agents consistently see the "why," not just a title.                        |
-| **Portable company templates.**   | Export/import orgs, agents, and skills with secret scrubbing and collision handling.                          |
+| **Portable company templates.**   | Export/import orgs, agents, and skills with secret scrubbing and collision handling.                           |
 | **True multi-company isolation.** | Every entity is company-scoped, so one deployment can run many companies with separate data and audit trails. |
 
 <br/>
@@ -160,75 +269,48 @@ Paperclip handles the hard orchestration details correctly.
 
 |                              |                                                                                                                      |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Not a chatbot.**           | Agents have jobs, not chat windows.                                                                                  |
+| **Not a chatbot.**           | Agents have jobs, not chat windows.                                                                                   |
 | **Not an agent framework.**  | We don't tell you how to build agents. We tell you how to run a company made of them.                                |
-| **Not a workflow builder.**  | No drag-and-drop pipelines. Paperclip models companies — with org charts, goals, budgets, and governance.            |
-| **Not a prompt manager.**    | Agents bring their own prompts, models, and runtimes. Paperclip manages the organization they work in.               |
+| **Not a workflow builder.**  | No drag-and-drop pipelines. Paperclip models companies — with org charts, goals, budgets, and governance.             |
+| **Not a prompt manager.**    | Agents bring their own prompts, models, and runtimes. Paperclip manages the organization they work in.              |
 | **Not a single-agent tool.** | This is for teams. If you have one agent, you probably don't need Paperclip. If you have twenty — you definitely do. |
 | **Not a code review tool.**  | Paperclip orchestrates work, not pull requests. Bring your own review process.                                       |
 
 <br/>
 
-## Quickstart
+## Development
 
-Open source. Self-hosted. No Paperclip account required.
+| Command | Description |
+| ------- | ----------- |
+| `pnpm dev` | Start Rust server (API + UI) with watch |
+| `pnpm dev:once` | Start server once (no watch) |
+| `pnpm dev:build-ui` | Build React UI to `ui/dist` |
+| `pnpm build` | Build all packages |
+| `pnpm typecheck` | Type check |
+| `pnpm test:run` | Run tests |
+| `pnpm db:generate` | Generate DB migration (Drizzle) |
+| `pnpm db:migrate` | Apply migrations |
 
-```bash
-npx paperclipai onboard --yes
-```
-
-Or manually:
-
-```bash
-git clone https://github.com/paperclipai/paperclip.git
-cd paperclip
-pnpm install
-pnpm dev
-```
-
-This starts the API server at `http://localhost:3100`. An embedded PostgreSQL database is created automatically — no setup required.
-
-> **Requirements:** Node.js 20+, pnpm 9.15+
+See [doc/DEVELOPING.md](doc/DEVELOPING.md) for the full development guide and [doc/DATABASE.md](doc/DATABASE.md) for database options.
 
 <br/>
 
 ## FAQ
 
-**What does a typical setup look like?**
-Locally, a single Node.js process manages an embedded Postgres and local file storage. For production, point it at your own Postgres and deploy however you like. Configure projects, agents, and goals — the agents take care of the rest.
+**What does a typical setup look like?**  
+A single Rust process serves the API and static UI. Database: either embedded PostgreSQL (zero config) or your own Postgres via `DATABASE_URL`. Configure projects, agents, and goals — the agents take care of the rest. For production, point at your own Postgres and deploy the binary or use Docker.
 
-If you're a solo-entreprenuer you can use Tailscale to access Paperclip on the go. Then later you can deploy to e.g. Vercel when you need it.
-
-**Can I run multiple companies?**
+**Can I run multiple companies?**  
 Yes. A single deployment can run an unlimited number of companies with complete data isolation.
 
-**How is Paperclip different from agents like OpenClaw or Claude Code?**
+**How is Paperclip different from agents like OpenClaw or Claude Code?**  
 Paperclip _uses_ those agents. It orchestrates them into a company — with org charts, budgets, goals, governance, and accountability.
 
-**Why should I use Paperclip instead of just pointing my OpenClaw to Asana or Trello?**
-Agent orchestration has subtleties in how you coordinate who has work checked out, how to maintain sessions, monitoring costs, establishing governance - Paperclip does this for you.
+**Why should I use Paperclip instead of just pointing my OpenClaw to Asana or Trello?**  
+Agent orchestration has subtleties in how you coordinate who has work checked out, how to maintain sessions, monitoring costs, establishing governance — Paperclip does this for you.
 
-(Bring-your-own-ticket-system is on the Roadmap)
-
-**Do agents run continuously?**
+**Do agents run continuously?**  
 By default, agents run on scheduled heartbeats and event-based triggers (task assignment, @-mentions). You can also hook in continuous agents like OpenClaw. You bring your agent and Paperclip coordinates.
-
-<br/>
-
-## Development
-
-```bash
-pnpm dev              # Full dev (API + UI, watch mode)
-pnpm dev:once         # Full dev without file watching
-pnpm dev:server       # Server only
-pnpm build            # Build all
-pnpm typecheck        # Type checking
-pnpm test:run         # Run tests
-pnpm db:generate      # Generate DB migration
-pnpm db:migrate       # Apply migrations
-```
-
-See [doc/DEVELOPING.md](doc/DEVELOPING.md) for the full development guide.
 
 <br/>
 
@@ -236,19 +318,17 @@ See [doc/DEVELOPING.md](doc/DEVELOPING.md) for the full development guide.
 
 - ⚪ Get OpenClaw onboarding easier
 - ⚪ Get cloud agents working e.g. Cursor / e2b agents
-- ⚪ ClipMart - buy and sell entire agent companies
+- ⚪ ClipMart — buy and sell entire agent companies
 - ⚪ Easy agent configurations / easier to understand
 - ⚪ Better support for harness engineering
-- ⚪ Plugin system (e.g. if you want to add a knowledgebase, custom tracing, queues, etc)
+- ⚪ Plugin system (e.g. knowledgebase, custom tracing, queues)
 - ⚪ Better docs
 
 <br/>
 
 ## Contributing
 
-We welcome contributions. See the [contributing guide](CONTRIBUTING.md) for details.
-
-<!-- TODO: add CONTRIBUTING.md -->
+We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 <br/>
 
@@ -262,9 +342,7 @@ We welcome contributions. See the [contributing guide](CONTRIBUTING.md) for deta
 
 ## License
 
-MIT &copy; 2026 Paperclip
-
-## Star History
+MIT © 2026 Paperclip
 
 [![Star History Chart](https://api.star-history.com/image?repos=paperclipai/paperclip&type=date&legend=top-left)](https://www.star-history.com/?repos=paperclipai%2Fpaperclip&type=date&legend=top-left)
 
