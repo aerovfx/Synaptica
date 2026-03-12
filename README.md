@@ -10,8 +10,7 @@
   <a href="https://discord.gg/m4HZY7xNG3"><strong>Discord</strong></a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/aerovfx/Synaptica/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+
   <a href="https://github.com/aerovfx/Synaptica/stargazers"><img src="https://img.shields.io/github/stars/aerovfx/Synaptica?style=flat" alt="Stars" /></a>
   <a href="https://discord.gg/m4HZY7xNG3"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
 </p>
