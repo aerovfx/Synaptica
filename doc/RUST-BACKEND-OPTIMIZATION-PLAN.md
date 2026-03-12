@@ -2,7 +2,7 @@
 
 **Mục đích:** Cấu hình và tối ưu backend Rust cho môi trường dev và production, dễ vận hành và mở rộng sau này.
 
-**Trạng thái:** Phase 1 và Phase 2 đã triển khai (config, DB pool, scheduler; HTTP body limit + compression; runner semaphore + timeout caps). Phase 3 trở đi chờ triển khai.
+**Trạng thái:** Phase 1–4 đã triển khai (config, DB pool, scheduler; HTTP + runner; build release, request ID, CORS, security headers; metrics endpoint, config file).
 
 ---
 
@@ -162,14 +162,14 @@
    - Body limit từ config; compression response.  
    - Runner: `RUNNER_MAX_CONCURRENT_RUNS` + semaphore; upper bound timeout HTTP/process.
 
-3. **Phase 3 (build + observability + security)**  
-   - Release profile (LTO, strip).  
-   - Request ID middleware; (tùy chọn) structured log.  
-   - CORS theo env; security headers.
+3. **Phase 3 (build + observability + security)** ✓  
+   - Release profile (LTO thin, strip, codegen-units=1).  
+   - Request ID middleware (X-Request-Id, UUID v4 fallback, propagate to response).  
+   - CORS theo env (`CORS_ORIGINS`); security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy).
 
-4. **Phase 4 (tùy chọn)**  
-   - Metrics endpoint.  
-   - Config file (nếu cần).
+4. **Phase 4 (tùy chọn)** ✓  
+   - **Metrics endpoint:** `GET /api/metrics` — Prometheus exposition format (`paperclip_http_requests_total`, `paperclip_http_errors_total`, `paperclip_runner_active_runs`).  
+   - **Config file:** `CONFIG_FILE` env = path to JSON; keys = env names, values string/number; env overrides file.
 
 ---
 

@@ -1,21 +1,27 @@
 mod auth;
 mod config;
 mod db;
+mod metrics;
 mod models;
+mod request_id;
 mod routes;
 mod runner;
 mod scheduler;
 
 use axum::extract::DefaultBodyLimit;
 use axum::Router;
+use axum::http::header::{HeaderName, HeaderValue};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use tower_http::compression::CompressionLayer;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::request_id::{SetRequestIdLayer, PropagateRequestIdLayer};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::Config;
+use request_id::{UuidRequestId, x_request_id_header_name};
 use routes::api_routes;
 
 fn static_fallback_service(ui_dist: PathBuf) -> ServeDir<ServeFile> {
@@ -41,11 +47,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::from((config.host.as_str().parse::<std::net::IpAddr>()?, config.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    let layers = (
-        DefaultBodyLimit::max(config.http_body_max_bytes),
-        CompressionLayer::new(),
-        CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any),
-    );
+    let x_req_id = x_request_id_header_name();
+    let cors_layer = if config.cors_origins.is_empty() {
+        CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any)
+    } else {
+        let origins: Vec<HeaderValue> = config
+            .cors_origins
+            .iter()
+            .filter_map(|s| HeaderValue::from_str(s).ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::list(origins))
+            .allow_methods(Any)
+            .allow_headers(Any)
+    };
 
     if let Some(ref database_url) = config.database_url {
         let pool = db::create_pool(database_url, &config).await?;
@@ -72,9 +87,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         let app = app
             .with_state(state)
-            .layer(layers.0)
-            .layer(layers.1)
-            .layer(layers.2);
+            .layer(DefaultBodyLimit::max(config.http_body_max_bytes))
+            .layer(CompressionLayer::new())
+            .layer(SetRequestIdLayer::new(x_req_id.clone(), UuidRequestId))
+            .layer(PropagateRequestIdLayer::new(x_req_id.clone()))
+            .layer(cors_layer.clone())
+            .layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("x-content-type-options"),
+                HeaderValue::from_static("nosniff"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("x-frame-options"),
+                HeaderValue::from_static("DENY"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("referrer-policy"),
+                HeaderValue::from_static("strict-origin-when-cross-origin"),
+            ));
         tracing::info!("Paperclip (Rust) listening on http://{}", addr);
         axum::serve(listener, app.into_make_service()).await?;
     } else {
@@ -87,9 +116,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             api_router
         };
         let app = app
-            .layer(layers.0)
-            .layer(layers.1)
-            .layer(layers.2);
+            .layer(DefaultBodyLimit::max(config.http_body_max_bytes))
+            .layer(CompressionLayer::new())
+            .layer(SetRequestIdLayer::new(x_req_id.clone(), UuidRequestId))
+            .layer(PropagateRequestIdLayer::new(x_req_id))
+            .layer(cors_layer)
+            .layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("x-content-type-options"),
+                HeaderValue::from_static("nosniff"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("x-frame-options"),
+                HeaderValue::from_static("DENY"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("referrer-policy"),
+                HeaderValue::from_static("strict-origin-when-cross-origin"),
+            ));
         tracing::info!("Paperclip (Rust) listening on http://{}", addr);
         axum::serve(listener, app.into_make_service()).await?;
     }

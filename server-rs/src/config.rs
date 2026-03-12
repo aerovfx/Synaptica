@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
@@ -24,25 +25,59 @@ pub struct Config {
     pub runner_http_max_timeout_ms: u64,
     /// Cap for process adapter timeout in seconds (env: RUNNER_PROCESS_MAX_TIMEOUT_SECS).
     pub runner_process_max_timeout_secs: u64,
+    /// CORS allowed origins; empty = allow any (env: CORS_ORIGINS, comma-separated).
+    pub cors_origins: Vec<String>,
 }
 
 impl Config {
+    /// Load optional config file (env CONFIG_FILE = path to JSON). Keys = env names, values = string or number.
+    /// Env vars override file. Returns empty map if CONFIG_FILE unset or parse fails.
+    fn load_config_file() -> HashMap<String, String> {
+        let path = match env::var("CONFIG_FILE") {
+            Ok(p) => p,
+            Err(_) => return HashMap::new(),
+        };
+        let s = match std::fs::read_to_string(&path) {
+            Ok(x) => x,
+            Err(_) => return HashMap::new(),
+        };
+        let v: serde_json::Value = match serde_json::from_str(&s) {
+            Ok(x) => x,
+            Err(_) => return HashMap::new(),
+        };
+        let obj = match v.as_object() {
+            Some(o) => o,
+            None => return HashMap::new(),
+        };
+        let mut out = HashMap::new();
+        for (k, val) in obj {
+            let s = match val {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                _ => continue,
+            };
+            out.insert(k.clone(), s);
+        }
+        out
+    }
+
     pub fn from_env() -> Self {
         let _ = dotenvy::dotenv();
+        let file_vars = Self::load_config_file();
+        let get = |key: &str| -> Option<String> {
+            env::var(key).ok().or_else(|| file_vars.get(key).cloned())
+        };
 
-        let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-        let port = env::var("PORT")
-            .ok()
+        let host = get("HOST").unwrap_or_else(|| "127.0.0.1".to_string());
+        let port = get("PORT")
             .and_then(|s| s.parse().ok())
             .unwrap_or(3100);
 
-        let database_url = env::var("DATABASE_URL").ok();
+        let database_url = get("DATABASE_URL");
 
-        let ui_dist = env::var("UI_DIST")
-            .ok()
+        let ui_dist = get("UI_DIST")
             .map(PathBuf::from)
             .or_else(|| {
-                // Default: ../ui/dist when running from server-rs
                 let cwd = env::current_dir().ok()?;
                 let candidate = cwd.join("../ui/dist");
                 if candidate.join("index.html").exists() {
@@ -53,38 +88,39 @@ impl Config {
             })
             .filter(|p| p.join("index.html").exists());
 
-        let db_pool_max_size = env::var("DB_POOL_MAX_SIZE")
-            .ok()
+        let db_pool_max_size = get("DB_POOL_MAX_SIZE")
             .and_then(|s| s.parse().ok())
             .unwrap_or(10);
-        let db_pool_acquire_timeout_secs = env::var("DB_POOL_ACQUIRE_TIMEOUT_SECS")
-            .ok()
+        let db_pool_acquire_timeout_secs = get("DB_POOL_ACQUIRE_TIMEOUT_SECS")
             .and_then(|s| s.parse().ok())
             .unwrap_or(5);
-        let db_pool_idle_timeout_secs = env::var("DB_POOL_IDLE_TIMEOUT_SECS")
-            .ok()
-            .and_then(|s| s.parse().ok());
-        let scheduler_interval_secs = env::var("SCHEDULER_INTERVAL_SECS")
-            .ok()
+        let db_pool_idle_timeout_secs = get("DB_POOL_IDLE_TIMEOUT_SECS").and_then(|s| s.parse().ok());
+        let scheduler_interval_secs = get("SCHEDULER_INTERVAL_SECS")
             .and_then(|s| s.parse().ok())
             .unwrap_or(60);
 
-        let http_body_max_bytes = env::var("HTTP_BODY_MAX_BYTES")
-            .ok()
+        let http_body_max_bytes = get("HTTP_BODY_MAX_BYTES")
             .and_then(|s| s.parse().ok())
             .unwrap_or(2 * 1024 * 1024); // 2 MiB
-        let runner_max_concurrent_runs = env::var("RUNNER_MAX_CONCURRENT_RUNS")
-            .ok()
+        let runner_max_concurrent_runs = get("RUNNER_MAX_CONCURRENT_RUNS")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
-        let runner_http_max_timeout_ms = env::var("RUNNER_HTTP_MAX_TIMEOUT_MS")
-            .ok()
+        let runner_http_max_timeout_ms = get("RUNNER_HTTP_MAX_TIMEOUT_MS")
             .and_then(|s| s.parse().ok())
             .unwrap_or(300_000); // 5 min
-        let runner_process_max_timeout_secs = env::var("RUNNER_PROCESS_MAX_TIMEOUT_SECS")
-            .ok()
+        let runner_process_max_timeout_secs = get("RUNNER_PROCESS_MAX_TIMEOUT_SECS")
             .and_then(|s| s.parse().ok())
             .unwrap_or(86400); // 24 h
+
+        let cors_origins = get("CORS_ORIGINS")
+            .map(|s| {
+                s.split(',')
+                    .map(str::trim)
+                    .filter(|x| !x.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default();
 
         Self {
             database_url,
@@ -99,6 +135,7 @@ impl Config {
             runner_max_concurrent_runs,
             runner_http_max_timeout_ms,
             runner_process_max_timeout_secs,
+            cors_origins,
         }
     }
 }

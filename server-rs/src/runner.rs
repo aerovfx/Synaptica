@@ -12,6 +12,8 @@ use tokio::process::Command;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
+use crate::metrics::MetricsGauge;
+
 const MAX_EXCERPT_BYTES: usize = 32 * 1024;
 const DEFAULT_TIMEOUT_SEC: u64 = 900;
 const DEFAULT_GRACE_SEC: u64 = 15;
@@ -26,13 +28,16 @@ pub struct RunnerLimits {
 
 /// Spawns the run executor in the background. Call this after creating a queued run.
 /// If `semaphore` is Some, acquires a permit before running (drops when done).
+/// If `active_runs_gauge` is Some, increments on start and decrements when the run finishes.
 pub fn spawn_run(
     pool: PgPool,
     run_id: Uuid,
     semaphore: Option<Arc<Semaphore>>,
     limits: RunnerLimits,
+    active_runs_gauge: Option<Arc<MetricsGauge>>,
 ) {
     tokio::spawn(async move {
+        let _active_guard = active_runs_gauge.as_ref().map(|g| g.clone().guard());
         let _permit = if let Some(sem) = semaphore {
             match sem.acquire_owned().await {
                 Ok(p) => Some(p),

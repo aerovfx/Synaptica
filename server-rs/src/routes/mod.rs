@@ -25,6 +25,7 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use crate::config::Config;
+use crate::metrics::MetricsGauge;
 use crate::runner::RunnerLimits;
 use crate::auth;
 use sqlx::PgPool;
@@ -48,12 +49,14 @@ use self::join_requests::{get_join_request, list_join_requests};
 use self::heartbeats::{cancel_run, get_run, get_run_log, list_run_events, list_runs, wakeup_agent};
 use self::misc::{board_claim, get_session, get_skill, llm_config, sidebar_badges, skills_index};
 
-/// Shared state for API routes (pool + optional runner semaphore + runner limits).
+/// Shared state for API routes (pool + optional runner semaphore + runner limits + metrics).
 #[derive(Clone)]
 pub struct ApiState {
     pub pool: PgPool,
     pub runner_semaphore: Option<Arc<Semaphore>>,
     pub runner_limits: RunnerLimits,
+    /// Gauge for active adapter runs (used by /api/metrics and runner).
+    pub metrics_active_runs: Arc<MetricsGauge>,
 }
 
 impl FromRef<ApiState> for PgPool {
@@ -77,12 +80,22 @@ pub fn build_api_state(pool: PgPool, config: &Config) -> ApiState {
         pool,
         runner_semaphore,
         runner_limits,
+        metrics_active_runs: Arc::new(MetricsGauge::new()),
     }
+}
+
+async fn serve_metrics(axum::extract::State(state): axum::extract::State<ApiState>) -> axum::response::Response {
+    crate::metrics::metrics_handler(Some(state.metrics_active_runs.get())).await
+}
+
+async fn serve_metrics_no_db() -> axum::response::Response {
+    crate::metrics::metrics_handler(None).await
 }
 
 pub fn api_routes(state: ApiState) -> Router<ApiState> {
     Router::new()
         .route("/health", get(health))
+        .route("/metrics", get(serve_metrics))
         .route("/companies", get(list_companies).post(create_company))
         .route("/companies/:company_id", get(get_company).patch(update_company).delete(delete_company))
         .route("/companies/:company_id/archive", post(archive_company))
@@ -154,6 +167,7 @@ pub fn api_routes(state: ApiState) -> Router<ApiState> {
         .route("/companies/:company_id/costs/by-project", get(get_costs_by_project))
         .route("/companies/:company_id/dashboard", get(dashboard))
         .route("/companies/:company_id/activity", get(list_activity))
+        .route_layer(middleware::from_fn(crate::metrics::metrics_middleware))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::actor_middleware))
         .with_state(state)
 }
@@ -162,6 +176,7 @@ pub fn api_routes(state: ApiState) -> Router<ApiState> {
 pub fn api_routes_no_db() -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/metrics", get(serve_metrics_no_db))
         .route("/companies", get(companies::companies_no_db))
         .route("/companies/:company_id", get(companies::companies_no_db))
         .route("/companies/:company_id/archive", post(companies::companies_no_db))

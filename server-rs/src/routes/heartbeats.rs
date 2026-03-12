@@ -115,6 +115,7 @@ pub async fn wakeup_agent(
         run_id,
         state.runner_semaphore.clone(),
         state.runner_limits.clone(),
+        Some(state.metrics_active_runs.clone()),
     );
 
     Ok(Json(serde_json::to_value(&row).unwrap()))

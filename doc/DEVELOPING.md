@@ -55,7 +55,11 @@ Use `pnpm dev:once` to run without migration prompt.
 | `RUNNER_MAX_CONCURRENT_RUNS` | `0` | Max concurrent adapter runs (0 = unlimited) |
 | `RUNNER_HTTP_MAX_TIMEOUT_MS` | `300000` (5 min) | Cap for HTTP adapter timeout (ms) |
 | `RUNNER_PROCESS_MAX_TIMEOUT_SECS` | `86400` (24 h) | Cap for process adapter timeout (sec) |
+| `CORS_ORIGINS` | — | Comma-separated allowed origins (e.g. `https://app.example.com`); empty/unset = allow any |
+| `CONFIG_FILE` | — | Path to JSON config file; keys = env names (e.g. `PORT`, `HOST`), values = string or number; env overrides file |
 | `RUST_LOG` | `info,tower_http=debug` | Log level (e.g. `info`, `debug`, `warn`) |
+
+**Metrics:** `GET /api/metrics` returns Prometheus exposition format (counters: `paperclip_http_requests_total`, `paperclip_http_errors_total`; gauge: `paperclip_runner_active_runs` when DB is set).
 
 For Tailscale/private auth, set env (e.g. `PAPERCLIP_DEPLOYMENT_MODE=authenticated`) before `pnpm dev`.
 

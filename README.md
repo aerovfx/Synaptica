@@ -101,6 +101,17 @@ It looks like a task manager — but under the hood it has org charts, budgets, 
 
    The API and UI will be at **http://localhost:3100**.
 
+**Lệnh chạy code (tóm tắt):**
+
+```bash
+pnpm install
+pnpm dev:build-ui   # một lần, hoặc khi đổi UI
+pnpm dev
+```
+
+- Chạy nhanh không hỏi migrate: `pnpm dev:once`
+- Chạy full (onboard + doctor + server): `pnpm paperclipai run`
+
 5. **(Optional) Use your own PostgreSQL**
 
    ```bash
