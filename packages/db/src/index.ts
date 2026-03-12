@@ -18,4 +18,5 @@ export {
   type RunDatabaseBackupResult,
   type RunDatabaseRestoreOptions,
 } from "./backup-lib.js";
+export { resolveMigrationConnection } from "./migration-runtime.js";
 export * from "./schema/index.js";

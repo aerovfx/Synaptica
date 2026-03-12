@@ -39,12 +39,13 @@ For a full PostgreSQL server locally, use the included Docker Compose setup:
 docker compose up -d
 ```
 
-This starts PostgreSQL 17 on `localhost:5432`. Then set the connection string:
+This starts PostgreSQL 17 on `localhost:5432`. Then set the connection string (user and database name are up to you, e.g. `paperclip` or `paperclip1`):
 
 ```sh
 cp .env.example .env
-# .env already contains:
+# Edit .env; examples:
 # DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip
+# DATABASE_URL=postgres://paperclip1:YOUR_PASSWORD@localhost:5432/paperclip1
 ```
 
 Run migrations (once the migration generation issue is fixed) or use `drizzle-kit push`:
@@ -118,6 +119,38 @@ DATABASE_URL=postgres://postgres.[PROJECT-REF]:[PASSWORD]@...5432/postgres \
 - Projects pause after 1 week of inactivity
 
 See [Supabase pricing](https://supabase.com/pricing) for current details.
+
+## Migrating database from Paperclip to Synaptica
+
+If you have an existing Paperclip project (e.g. at `Synaptica/paperclip`) and want to use that data in Synaptica:
+
+1. **Source (Paperclip)** — choose one:
+   - **Embedded Postgres:** Ensure Paperclip’s embedded instance is running (e.g. start Paperclip once: `cd paperclip && pnpm dev`, then stop it). The script will use `~/.paperclip/instances/default/config.json` and the port from config (default `54329`).
+   - **Explicit URL:** Set `PAPERCLIP_SOURCE_DATABASE_URL` to Paperclip’s connection string, e.g.  
+     `postgres://paperclip:paperclip@127.0.0.1:54329/paperclip`
+   - **Config path:** Set `PAPERCLIP_SOURCE_CONFIG` to the path of Paperclip’s `config.json` (e.g. `paperclip/.paperclip/config.json` or `~/.paperclip/instances/default/config.json`).
+
+3. **Target (Synaptica):** Set `DATABASE_URL` to the Synaptica Postgres URL (empty database or one you want to overwrite).
+
+4. **Run the migration:**
+   ```sh
+   DATABASE_URL=postgres://user:pass@localhost:5432/synaptica pnpm db:migrate-from-paperclip
+   ```
+   Or with explicit source:
+   ```sh
+   PAPERCLIP_SOURCE_DATABASE_URL=postgres://paperclip:paperclip@127.0.0.1:54329/paperclip \
+   DATABASE_URL=postgres://user:pass@localhost:5432/synaptica \
+   pnpm db:migrate-from-paperclip
+   ```
+
+5. **Apply pending migrations** (if Synaptica has newer schema):
+   ```sh
+   DATABASE_URL=postgres://user:pass@localhost:5432/synaptica pnpm db:migrate
+   ```
+
+6. Start Synaptica with the same `DATABASE_URL`: `pnpm dev`.
+
+Backup files are written to `scripts/backups/` with prefix `paperclip-to-synaptica-*.sql`.
 
 ## Switching between modes
 

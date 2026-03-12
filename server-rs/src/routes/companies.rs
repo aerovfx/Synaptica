@@ -3,11 +3,115 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
+use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::auth::RequireBoard;
 use crate::models::company::Company;
+
+/// Inserts default agents (CEO, CTO, CFO, COO, Engineer) for a new company so the initial UI shows them.
+async fn insert_default_agents(
+    pool: &PgPool,
+    company_id: Uuid,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), sqlx::Error> {
+    let ceo_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO agents (id, company_id, name, role, title, status, adapter_type, adapter_config, runtime_config, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)",
+    )
+    .bind(ceo_id)
+    .bind(company_id)
+    .bind("CEO Agent")
+    .bind("ceo")
+    .bind("Chief Executive Officer")
+    .bind("idle")
+    .bind("process")
+    .bind(&json!({ "command": "echo", "args": ["hello from ceo"] }))
+    .bind(&json!({}))
+    .bind(&json!({}))
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    let cto_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO agents (id, company_id, name, role, title, status, reports_to, adapter_type, adapter_config, runtime_config, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)",
+    )
+    .bind(cto_id)
+    .bind(company_id)
+    .bind("CTO Agent")
+    .bind("cto")
+    .bind("Chief Technology Officer")
+    .bind("idle")
+    .bind(ceo_id)
+    .bind("process")
+    .bind(&json!({ "command": "echo", "args": ["hello from cto"] }))
+    .bind(&json!({}))
+    .bind(&json!({}))
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    let cfo_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO agents (id, company_id, name, role, title, status, reports_to, adapter_type, adapter_config, runtime_config, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)",
+    )
+    .bind(cfo_id)
+    .bind(company_id)
+    .bind("CFO Agent")
+    .bind("cfo")
+    .bind("Chief Financial Officer")
+    .bind("idle")
+    .bind(ceo_id)
+    .bind("process")
+    .bind(&json!({ "command": "echo", "args": ["hello from cfo"] }))
+    .bind(&json!({}))
+    .bind(&json!({}))
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    let coo_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO agents (id, company_id, name, role, title, status, reports_to, adapter_type, adapter_config, runtime_config, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)",
+    )
+    .bind(coo_id)
+    .bind(company_id)
+    .bind("COO Agent")
+    .bind("coo")
+    .bind("Chief Operating Officer")
+    .bind("idle")
+    .bind(ceo_id)
+    .bind("process")
+    .bind(&json!({ "command": "echo", "args": ["hello from coo"] }))
+    .bind(&json!({}))
+    .bind(&json!({}))
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    let _engineer_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO agents (id, company_id, name, role, title, status, reports_to, adapter_type, adapter_config, runtime_config, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)",
+    )
+    .bind(_engineer_id)
+    .bind(company_id)
+    .bind("Engineer Agent")
+    .bind("engineer")
+    .bind("Software Engineer")
+    .bind("idle")
+    .bind(ceo_id)
+    .bind("process")
+    .bind(&json!({ "command": "echo", "args": ["hello from engineer"] }))
+    .bind(&json!({}))
+    .bind(&json!({}))
+    .bind(now)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
 
 /// GET /api/companies — list all companies
 pub async fn list_companies(State(pool): State<PgPool>) -> Result<Json<Vec<Company>>, (StatusCode, String)> {
@@ -80,8 +184,8 @@ pub async fn create_company(
         .bind(now)
         .fetch_optional(&pool)
         .await;
-        match res {
-            Ok(Some(row)) => return Ok((StatusCode::CREATED, Json(row))),
+        let row = match res {
+            Ok(Some(r)) => r,
             Err(e) => {
                 if let Some(db_err) = e.as_database_error() {
                     if db_err.is_unique_violation() {
@@ -91,7 +195,12 @@ pub async fn create_company(
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
             }
             _ => continue,
+        };
+        if let Err(e) = insert_default_agents(&pool, row.id, now).await {
+            // Best-effort: company is created even if default agents fail.
+            eprintln!("failed to insert default agents for company {}: {}", row.id, e);
         }
+        return Ok((StatusCode::CREATED, Json(row)));
     }
     Err((StatusCode::CONFLICT, "Could not allocate unique issue prefix".to_string()))
 }
@@ -175,6 +284,73 @@ pub struct CompanyStats {
     pub pending_approvals_count: i64,
     pub month_spend_cents: i64,
     pub budget_monthly_cents: i32,
+}
+
+/// GET /api/companies/stats — global stats keyed by company id (paperclip parity).
+pub async fn list_companies_stats(
+    State(pool): State<PgPool>,
+) -> Result<Json<std::collections::HashMap<String, CompanyStats>>, (StatusCode, String)> {
+    let companies = sqlx::query_scalar::<_, Uuid>("SELECT id FROM companies ORDER BY created_at")
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let mut out = std::collections::HashMap::new();
+    for cid in companies {
+        let cid_s = cid.to_string();
+        let agents_count: i64 = sqlx::query_scalar("SELECT count(*)::bigint FROM agents WHERE company_id = $1")
+            .bind(cid)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let projects_count: i64 = sqlx::query_scalar("SELECT count(*)::bigint FROM projects WHERE company_id = $1")
+            .bind(cid)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let goals_count: i64 = sqlx::query_scalar("SELECT count(*)::bigint FROM goals WHERE company_id = $1")
+            .bind(cid)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let issues_count: i64 = sqlx::query_scalar("SELECT count(*)::bigint FROM issues WHERE company_id = $1")
+            .bind(cid)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let pending_approvals_count: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM approvals WHERE company_id = $1 AND status = 'pending'",
+        )
+        .bind(cid)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let month_spend_cents: i64 = sqlx::query_scalar(
+            "SELECT coalesce(sum(cost_cents), 0)::bigint FROM cost_events WHERE company_id = $1 AND occurred_at >= date_trunc('month', now())",
+        )
+        .bind(cid)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let budget_monthly_cents: i32 = sqlx::query_scalar("SELECT budget_monthly_cents FROM companies WHERE id = $1")
+            .bind(cid)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        out.insert(
+            cid_s.clone(),
+            CompanyStats {
+                company_id: cid_s.clone(),
+                agents_count,
+                projects_count,
+                goals_count,
+                issues_count,
+                pending_approvals_count,
+                month_spend_cents,
+                budget_monthly_cents,
+            },
+        );
+    }
+    Ok(Json(out))
 }
 
 /// GET /api/companies/:companyId/stats

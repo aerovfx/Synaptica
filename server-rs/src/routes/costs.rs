@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::auth::RequireBoard;
 use crate::models::cost_event::CostEvent;
+use crate::models::company::Company;
+use crate::models::agent::Agent;
 
 #[derive(Deserialize)]
 pub struct CompanyIdParam {
@@ -160,6 +163,66 @@ pub async fn get_costs_by_project(
             })
             .collect(),
     ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateBudgetBody {
+    pub budget_monthly_cents: Option<i32>,
+}
+
+/// PATCH /api/companies/:companyId/budgets
+pub async fn patch_company_budgets(
+    _guard: RequireBoard,
+    State(pool): State<PgPool>,
+    Path(params): Path<CompanyIdParam>,
+    Json(body): Json<UpdateBudgetBody>,
+) -> Result<Json<Company>, (StatusCode, String)> {
+    let cents = body.budget_monthly_cents.unwrap_or(0);
+    if cents < 0 {
+        return Err((StatusCode::BAD_REQUEST, "budget_monthly_cents must be non-negative".to_string()));
+    }
+    let now = chrono::Utc::now();
+    let row = sqlx::query_as::<_, Company>(
+        "UPDATE companies SET budget_monthly_cents = $2, updated_at = $3 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at",
+    )
+    .bind(&params.company_id)
+    .bind(cents)
+    .bind(now)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
+    Ok(Json(row))
+}
+
+#[derive(Deserialize)]
+pub struct AgentIdParam {
+    pub id: String,
+}
+
+/// PATCH /api/agents/:agentId/budgets
+pub async fn patch_agent_budgets(
+    State(pool): State<PgPool>,
+    Path(params): Path<AgentIdParam>,
+    Json(body): Json<UpdateBudgetBody>,
+) -> Result<Json<Agent>, (StatusCode, String)> {
+    let cents = body.budget_monthly_cents.unwrap_or(0);
+    if cents < 0 {
+        return Err((StatusCode::BAD_REQUEST, "budget_monthly_cents must be non-negative".to_string()));
+    }
+    let now = chrono::Utc::now();
+    let row = sqlx::query_as::<_, Agent>(
+        "UPDATE agents SET budget_monthly_cents = $2, updated_at = $3 WHERE id = $1 RETURNING id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at",
+    )
+    .bind(&params.id)
+    .bind(cents)
+    .bind(now)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+    Ok(Json(row))
 }
 
 pub async fn costs_no_db() -> (StatusCode, &'static str) {

@@ -174,6 +174,105 @@ pub async fn list_config_revisions(
     Ok(Json(rows))
 }
 
+/// GET /api/agents/:id/config-revisions/:revisionId
+pub async fn get_config_revision(
+    State(pool): State<PgPool>,
+    Path(params): Path<AgentRevisionIdParam>,
+) -> Result<Json<AgentConfigRevision>, (StatusCode, String)> {
+    let row = sqlx::query_as::<_, AgentConfigRevision>(
+        "SELECT id, company_id, agent_id, created_by_agent_id, created_by_user_id, source, rolled_back_from_revision_id, changed_keys, before_config, after_config, created_at FROM agent_config_revisions WHERE agent_id = $1 AND id = $2",
+    )
+    .bind(&params.id)
+    .bind(&params.revision_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Revision not found".to_string()))?;
+    Ok(Json(row))
+}
+
+/// POST /api/agents/:id/config-revisions/:revisionId/rollback
+pub async fn rollback_config_revision(
+    _guard: RequireBoard,
+    State(pool): State<PgPool>,
+    Path(params): Path<AgentRevisionIdParam>,
+) -> Result<Json<Agent>, (StatusCode, String)> {
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
+    let revision_id = Uuid::parse_str(&params.revision_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid revision id".to_string()))?;
+    let rev: AgentConfigRevision = sqlx::query_as(
+        "SELECT id, company_id, agent_id, created_by_agent_id, created_by_user_id, source, rolled_back_from_revision_id, changed_keys, before_config, after_config, created_at FROM agent_config_revisions WHERE agent_id = $1 AND id = $2",
+    )
+    .bind(&params.id)
+    .bind(&params.revision_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Revision not found".to_string()))?;
+    let current: Agent = sqlx::query_as(
+        "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE id = $1",
+    )
+    .bind(agent_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+    let before_config = json!({
+        "name": current.name,
+        "role": current.role,
+        "title": current.title,
+        "reportsTo": current.reports_to,
+        "capabilities": current.capabilities,
+        "adapterType": current.adapter_type,
+        "adapterConfig": current.adapter_config,
+        "runtimeConfig": current.runtime_config,
+        "budgetMonthlyCents": current.budget_monthly_cents,
+        "metadata": current.metadata,
+    });
+    let after = rev.after_config.as_object().ok_or_else(|| (StatusCode::UNPROCESSABLE_ENTITY, "Invalid revision snapshot".to_string()))?;
+    let name = after.get("name").and_then(|v| v.as_str()).ok_or_else(|| (StatusCode::UNPROCESSABLE_ENTITY, "Invalid revision: name".to_string()))?;
+    let role = after.get("role").and_then(|v| v.as_str()).ok_or_else(|| (StatusCode::UNPROCESSABLE_ENTITY, "Invalid revision: role".to_string()))?;
+    let adapter_type = after.get("adapterType").and_then(|v| v.as_str()).ok_or_else(|| (StatusCode::UNPROCESSABLE_ENTITY, "Invalid revision: adapterType".to_string()))?;
+    let title = after.get("title").and_then(|v| v.as_str());
+    let reports_to = after.get("reportsTo").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok());
+    let capabilities = after.get("capabilities").and_then(|v| v.as_str());
+    let adapter_config = after.get("adapterConfig").cloned().unwrap_or_else(|| json!({}));
+    let runtime_config = after.get("runtimeConfig").cloned().unwrap_or_else(|| json!({}));
+    let budget_monthly_cents = after.get("budgetMonthlyCents").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+    let metadata = after.get("metadata").cloned();
+    let now = chrono::Utc::now();
+    let row = sqlx::query_as::<_, Agent>(
+        "UPDATE agents SET name = $2, role = $3, title = $4, reports_to = $5, capabilities = $6, adapter_type = $7, adapter_config = $8, runtime_config = $9, budget_monthly_cents = $10, metadata = $11, updated_at = $12 WHERE id = $1 RETURNING id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at",
+    )
+    .bind(agent_id)
+    .bind(name)
+    .bind(role)
+    .bind(title)
+    .bind(reports_to)
+    .bind(capabilities)
+    .bind(adapter_type)
+    .bind(&adapter_config)
+    .bind(&runtime_config)
+    .bind(budget_monthly_cents)
+    .bind(metadata.as_ref())
+    .bind(now)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+    sqlx::query(
+        "INSERT INTO agent_config_revisions (id, company_id, agent_id, source, rolled_back_from_revision_id, before_config, after_config) VALUES (gen_random_uuid(), $1, $2, 'rollback', $3, $4, $5)",
+    )
+    .bind(rev.company_id)
+    .bind(agent_id)
+    .bind(revision_id)
+    .bind(&before_config)
+    .bind(&rev.after_config)
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(row))
+}
+
 /// GET /api/agents/:id/runtime-state
 pub async fn get_runtime_state(
     State(pool): State<PgPool>,
@@ -194,6 +293,86 @@ pub async fn get_runtime_state(
 #[serde(rename_all = "camelCase")]
 pub struct UpdateRuntimeStateBody {
     pub state_json: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ResetRuntimeSessionBody {
+    pub task_key: Option<String>,
+}
+
+/// POST /api/agents/:id/runtime-state/reset-session
+pub async fn reset_runtime_session(
+    _guard: RequireBoard,
+    State(pool): State<PgPool>,
+    Path(params): Path<AgentIdParam>,
+    Json(body): Json<Option<ResetRuntimeSessionBody>>,
+) -> Result<Json<AgentRuntimeState>, (StatusCode, String)> {
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
+    let (company_id, adapter_type): (Uuid, String) = sqlx::query_as(
+        "SELECT company_id, adapter_type FROM agents WHERE id = $1",
+    )
+    .bind(agent_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+    let task_key = body.as_ref().and_then(|b| b.task_key.as_ref()).and_then(|s| if s.trim().is_empty() { None } else { Some(s.trim()) });
+    if let Some(key) = task_key {
+        sqlx::query("DELETE FROM agent_task_sessions WHERE company_id = $1 AND agent_id = $2 AND task_key = $3")
+            .bind(company_id)
+            .bind(agent_id)
+            .bind(key)
+            .execute(&pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    } else {
+        sqlx::query("DELETE FROM agent_task_sessions WHERE company_id = $1 AND agent_id = $2")
+            .bind(company_id)
+            .bind(agent_id)
+            .execute(&pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+    let now = chrono::Utc::now();
+    let row_opt = sqlx::query_as::<_, AgentRuntimeState>(
+        "SELECT agent_id, company_id, adapter_type, session_id, state_json, last_run_id, last_run_status, total_input_tokens, total_output_tokens, total_cached_input_tokens, total_cost_cents, last_error, created_at, updated_at FROM agent_runtime_state WHERE agent_id = $1",
+    )
+    .bind(agent_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let row = if let Some(_r) = row_opt {
+        if task_key.is_some() {
+            sqlx::query_as(
+                "UPDATE agent_runtime_state SET session_id = NULL, last_error = NULL, updated_at = $2 WHERE agent_id = $1 RETURNING agent_id, company_id, adapter_type, session_id, state_json, last_run_id, last_run_status, total_input_tokens, total_output_tokens, total_cached_input_tokens, total_cost_cents, last_error, created_at, updated_at",
+            )
+            .bind(agent_id)
+            .bind(now)
+            .fetch_one(&pool)
+            .await
+        } else {
+            sqlx::query_as(
+                "UPDATE agent_runtime_state SET session_id = NULL, state_json = '{}', last_error = NULL, updated_at = $2 WHERE agent_id = $1 RETURNING agent_id, company_id, adapter_type, session_id, state_json, last_run_id, last_run_status, total_input_tokens, total_output_tokens, total_cached_input_tokens, total_cost_cents, last_error, created_at, updated_at",
+            )
+            .bind(agent_id)
+            .bind(now)
+            .fetch_one(&pool)
+            .await
+        }
+    } else {
+        sqlx::query_as(
+            "INSERT INTO agent_runtime_state (agent_id, company_id, adapter_type, state_json, updated_at) VALUES ($1, $2, $3, '{}', $4) RETURNING agent_id, company_id, adapter_type, session_id, state_json, last_run_id, last_run_status, total_input_tokens, total_output_tokens, total_cached_input_tokens, total_cost_cents, last_error, created_at, updated_at",
+        )
+        .bind(agent_id)
+        .bind(company_id)
+        .bind(&adapter_type)
+        .bind(now)
+        .fetch_one(&pool)
+        .await
+    }
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(row))
 }
 
 /// PATCH /api/agents/:id/runtime-state — upsert runtime state
@@ -371,6 +550,134 @@ async fn set_agent_status(pool: &PgPool, id: &str, status: &str) -> Result<Json<
     Ok(Json(row))
 }
 
+/// DELETE /api/agents/:id
+pub async fn delete_agent(
+    _guard: RequireBoard,
+    State(pool): State<PgPool>,
+    Path(params): Path<AgentIdParam>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM agents WHERE id = $1)")
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if !exists {
+        return Err((StatusCode::NOT_FOUND, "Agent not found".to_string()));
+    }
+    sqlx::query("UPDATE agents SET reports_to = NULL WHERE reports_to = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM heartbeat_run_events WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM agent_task_sessions WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM heartbeat_runs WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM agent_wakeup_requests WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM agent_api_keys WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM agent_runtime_state WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM cost_events WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE issues SET assignee_agent_id = NULL WHERE assignee_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE issues SET created_by_agent_id = NULL WHERE created_by_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE issue_comments SET author_agent_id = NULL WHERE author_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE goals SET owner_agent_id = NULL WHERE owner_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE projects SET lead_agent_id = NULL WHERE lead_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE join_requests SET created_agent_id = NULL WHERE created_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE assets SET created_by_agent_id = NULL WHERE created_by_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE approvals SET requested_by_agent_id = NULL WHERE requested_by_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE approval_comments SET author_agent_id = NULL WHERE author_agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("UPDATE activity_log SET agent_id = NULL WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("DELETE FROM agent_config_revisions WHERE agent_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let result = sqlx::query("DELETE FROM agents WHERE id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Agent not found".to_string()));
+    }
+    tx.commit()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// PATCH /api/agents/:id
 pub async fn update_agent(
     State(pool): State<PgPool>,
@@ -398,6 +705,12 @@ pub async fn update_agent(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
     Ok(Json(row))
+}
+
+#[derive(Deserialize)]
+pub struct AgentRevisionIdParam {
+    pub id: String,
+    pub revision_id: String,
 }
 
 #[derive(Deserialize)]
@@ -501,6 +814,97 @@ pub async fn revoke_agent_key(
         return Err((StatusCode::NOT_FOUND, "Key not found".to_string()));
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /api/companies/:companyId/org — agent tree by reports_to (excludes terminated).
+pub async fn get_org(
+    State(pool): State<PgPool>,
+    Path(params): Path<CompanyIdParam>,
+) -> Result<Json<Vec<OrgNode>>, (StatusCode, String)> {
+    let rows = sqlx::query_as::<_, Agent>(
+        "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE company_id = $1 AND status != 'terminated' ORDER BY name",
+    )
+    .bind(&params.company_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let by_manager: std::collections::HashMap<Option<Uuid>, Vec<Agent>> = {
+        let mut m: std::collections::HashMap<Option<Uuid>, Vec<Agent>> = std::collections::HashMap::new();
+        for a in rows {
+            m.entry(a.reports_to).or_default().push(a);
+        }
+        m
+    };
+    fn build(by_manager: &std::collections::HashMap<Option<Uuid>, Vec<Agent>>, manager_id: Option<Uuid>) -> Vec<OrgNode> {
+        let members = by_manager.get(&manager_id).map(|v| v.as_slice()).unwrap_or(&[]);
+        members
+            .iter()
+            .map(|a| OrgNode {
+                id: a.id,
+                company_id: a.company_id,
+                name: a.name.clone(),
+                role: a.role.clone(),
+                title: a.title.clone(),
+                icon: a.icon.clone(),
+                status: a.status.clone(),
+                reports_to: a.reports_to,
+                capabilities: a.capabilities.clone(),
+                adapter_type: a.adapter_type.clone(),
+                adapter_config: a.adapter_config.clone(),
+                runtime_config: a.runtime_config.clone(),
+                budget_monthly_cents: a.budget_monthly_cents,
+                spent_monthly_cents: a.spent_monthly_cents,
+                permissions: a.permissions.clone(),
+                last_heartbeat_at: a.last_heartbeat_at,
+                metadata: a.metadata.clone(),
+                created_at: a.created_at,
+                updated_at: a.updated_at,
+                reports: build(by_manager, Some(a.id)),
+            })
+            .collect()
+    }
+    let tree = build(&by_manager, None);
+    Ok(Json(tree))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrgNode {
+    id: Uuid,
+    company_id: Uuid,
+    name: String,
+    role: String,
+    title: Option<String>,
+    icon: Option<String>,
+    status: String,
+    reports_to: Option<Uuid>,
+    capabilities: Option<String>,
+    adapter_type: String,
+    adapter_config: serde_json::Value,
+    runtime_config: serde_json::Value,
+    budget_monthly_cents: i32,
+    spent_monthly_cents: i32,
+    permissions: serde_json::Value,
+    last_heartbeat_at: Option<chrono::DateTime<chrono::Utc>>,
+    metadata: Option<serde_json::Value>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+    reports: Vec<OrgNode>,
+}
+
+/// GET /api/companies/:companyId/agent-configurations — list agents (config view, same as list for now).
+pub async fn list_agent_configurations(
+    State(pool): State<PgPool>,
+    Path(params): Path<CompanyIdParam>,
+) -> Result<Json<Vec<Agent>>, (StatusCode, String)> {
+    let rows = sqlx::query_as::<_, Agent>(
+        "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE company_id = $1 ORDER BY created_at",
+    )
+    .bind(&params.company_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(rows))
 }
 
 pub async fn agents_no_db() -> (StatusCode, &'static str) {

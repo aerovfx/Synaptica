@@ -18,6 +18,11 @@ pub struct TokenParam {
 }
 
 #[derive(Deserialize)]
+pub struct InviteIdParam {
+    pub invite_id: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateInviteBody {
     pub invite_type: Option<String>,
@@ -83,6 +88,24 @@ pub async fn get_invite_by_token(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Invite not found or expired".to_string()))?;
+    Ok(Json(row))
+}
+
+/// POST /api/invites/:inviteId/revoke
+pub async fn revoke_invite(
+    State(pool): State<PgPool>,
+    Path(params): Path<InviteIdParam>,
+) -> Result<Json<InviteRow>, (StatusCode, String)> {
+    let now = chrono::Utc::now();
+    let row = sqlx::query_as::<_, InviteRow>(
+        "UPDATE invites SET revoked_at = $2, updated_at = $2 WHERE id = $1 AND revoked_at IS NULL RETURNING id, company_id, invite_type, allowed_join_types, expires_at, revoked_at, accepted_at, created_at",
+    )
+    .bind(&params.invite_id)
+    .bind(now)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Invite not found or already revoked".to_string()))?;
     Ok(Json(row))
 }
 

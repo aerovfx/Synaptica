@@ -43,7 +43,7 @@ import {
   Fingerprint,
   type LucideIcon,
 } from "lucide-react";
-import { AGENT_ICON_NAMES, type AgentIconName } from "@paperclipai/shared";
+import { AGENT_ICON_NAMES, type AgentIconName, type AgentRole } from "@paperclipai/shared";
 import {
   Popover,
   PopoverContent,
@@ -98,21 +98,50 @@ export const AGENT_ICONS: Record<AgentIconName, LucideIcon> = {
 
 const DEFAULT_ICON: AgentIconName = "bot";
 
-export function getAgentIcon(iconName: string | null | undefined): LucideIcon {
+/** Fallback icon per role so CEO/CTO/etc. display correctly when icon is null. */
+const ROLE_DEFAULT_ICON: Partial<Record<AgentRole, AgentIconName>> = {
+  ceo: "crown",
+  cto: "cog",
+  cmo: "sparkles",
+  cfo: "gem",
+  engineer: "code",
+  designer: "lightbulb",
+  pm: "target",
+  qa: "bug",
+  devops: "circuit-board",
+  researcher: "search",
+  general: "bot",
+};
+
+export function getDefaultIconForRole(role: AgentRole | undefined): AgentIconName {
+  if (role && ROLE_DEFAULT_ICON[role]) return ROLE_DEFAULT_ICON[role]!;
+  return DEFAULT_ICON;
+}
+
+export function getAgentIcon(
+  iconName: string | null | undefined,
+  role?: AgentRole
+): LucideIcon {
   if (iconName && AGENT_ICON_NAMES.includes(iconName as AgentIconName)) {
     return AGENT_ICONS[iconName as AgentIconName];
   }
-  return AGENT_ICONS[DEFAULT_ICON];
+  const fallback = getDefaultIconForRole(role);
+  return AGENT_ICONS[fallback];
 }
 
 interface AgentIconProps {
   icon: string | null | undefined;
+  role?: AgentRole;
   className?: string;
 }
 
-export function AgentIcon({ icon, className }: AgentIconProps) {
-  const Icon = getAgentIcon(icon);
-  return <Icon className={className} />;
+export function AgentIcon({ icon, role, className }: AgentIconProps) {
+  const Icon = getAgentIcon(icon, role);
+  return (
+    <span className="inline-flex shrink-0 items-center justify-center" aria-hidden>
+      <Icon className={className} />
+    </span>
+  );
 }
 
 interface AgentIconPickerProps {

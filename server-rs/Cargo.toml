@@ -5,7 +5,7 @@ edition = "2021"
 description = "Paperclip control plane API (Rust)"
 
 [dependencies]
-axum = { version = "0.7", features = ["json"] }
+axum = { version = "0.7", features = ["json", "ws"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors", "fs", "compression-gzip", "limit", "request-id", "set-header"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "uuid"] }
@@ -20,6 +20,7 @@ reqwest = { version = "0.12", features = ["json"] }
 sha2 = "0.10"
 rand = "0.8"
 base64 = "0.22"
+futures-util = "0.3"
 
 [profile.release]
 opt-level = 3

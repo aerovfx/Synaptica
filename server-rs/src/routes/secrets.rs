@@ -38,6 +38,14 @@ pub struct RotateSecretBody {
     pub material: Option<serde_json::Value>,
 }
 
+/// GET /api/companies/:companyId/secret-providers — list providers (stub: empty array for Rust).
+pub async fn list_secret_providers(
+    State(_pool): State<PgPool>,
+    Path(_params): Path<CompanyIdParam>,
+) -> Result<Json<Vec<serde_json::Value>>, (StatusCode, String)> {
+    Ok(Json(Vec::new()))
+}
+
 /// GET /api/companies/:company_id/secrets
 pub async fn list_secrets(
     State(pool): State<PgPool>,

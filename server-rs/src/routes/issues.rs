@@ -2,7 +2,7 @@ use axum::extract::Path;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -73,6 +73,62 @@ pub async fn get_issue(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueReadState {
+    pub id: Uuid,
+    pub company_id: Uuid,
+    pub issue_id: Uuid,
+    pub user_id: String,
+    pub last_read_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkReadBody {
+    pub user_id: Option<String>,
+}
+
+/// POST /api/issues/:id/read — mark issue as read for a user (board context).
+pub async fn mark_issue_read(
+    State(pool): State<PgPool>,
+    Path(params): Path<IssueIdParam>,
+    Json(body): Json<Option<MarkReadBody>>,
+) -> Result<Json<IssueReadState>, (StatusCode, String)> {
+    let issue_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid issue id".to_string()))?;
+    let (company_id,): (Uuid,) = sqlx::query_as(
+        "SELECT company_id FROM issues WHERE id = $1",
+    )
+    .bind(issue_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+    let user_id = body
+        .and_then(|b| b.user_id)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "board".to_string());
+    let now = chrono::Utc::now();
+    let row = sqlx::query_as::<_, IssueReadState>(
+        r#"
+        INSERT INTO issue_read_states (id, company_id, issue_id, user_id, last_read_at, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, $4, $4)
+        ON CONFLICT (company_id, issue_id, user_id) DO UPDATE SET last_read_at = $4, updated_at = $4
+        RETURNING id, company_id, issue_id, user_id, last_read_at, created_at, updated_at
+        "#,
+    )
+    .bind(company_id)
+    .bind(issue_id)
+    .bind(&user_id)
+    .bind(now)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(row))
 }
 

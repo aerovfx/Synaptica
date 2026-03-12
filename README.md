@@ -111,9 +111,31 @@ pnpm dev
 
 *(Build UI chỉ cần chạy một lần, hoặc khi đổi UI.)*
 
-- Chạy nhanh không hỏi migrate: `pnpm dev:once`
-- Chạy full (onboard + doctor + server): `pnpm paperclipai run`
-- Nếu gặp lỗi Postgres *role "user" does not exist*: bỏ set `DATABASE_URL` (unset) để dùng embedded PostgreSQL, hoặc sửa connection string đúng user/pass của máy.
+**Lỗi Postgres khi chạy `pnpm dev`?** (ví dụ *role "user" does not exist*)  
+→ Dùng **một** trong hai cách:
+
+1. **Embedded PostgreSQL (khuyến nghị, không cài Postgres):** chạy một lệnh — tự tạo DB + khởi động server:
+   ```bash
+   pnpm paperclipai run
+   ```
+2. **Chỉ chạy server (không DB):** `unset DATABASE_URL` rồi `pnpm dev` — server chạy nhưng API trả 503 (không dùng được companies, agents, …). Chỉ dùng để kiểm tra health/metrics.
+
+- Chạy nhanh không hỏi migrate: `pnpm dev:once` (cần `DATABASE_URL` đã đúng)
+- Chạy full lần đầu: `pnpm paperclipai run` (onboard + doctor + embedded DB + server)
+
+**Lỗi "Address already in use" khi chạy `pnpm dev`?**  
+Port 3100 đang bị process khác chiếm (server cũ chưa tắt, hoặc app khác). Chọn một trong hai:
+
+1. **Tắt process đang dùng port 3100** (macOS/Linux):
+   ```bash
+   lsof -ti :3100 | xargs kill -9
+   ```
+   Sau đó chạy lại `pnpm dev`.
+2. **Đổi port:** đặt biến môi trường `PORT` rồi chạy, ví dụ:
+   ```bash
+   PORT=3101 pnpm dev
+   ```
+   Mở app tại **http://localhost:3101**.
 
 5. **(Optional) Use your own PostgreSQL**
 

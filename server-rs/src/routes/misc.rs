@@ -88,6 +88,48 @@ pub async fn board_claim() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "ok": true, "message": "Board context; no session in local_trusted mode" }))
 }
 
+#[derive(serde::Deserialize)]
+pub struct BoardClaimTokenParam {
+    pub token: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardClaimChallengeResponse {
+    pub status: String,
+    pub requires_sign_in: bool,
+    pub expires_at: Option<String>,
+    pub claimed_by_user_id: Option<String>,
+}
+
+/// GET /api/board-claim/:token — inspect board claim challenge (stub: returns invalid when no challenge).
+pub async fn get_board_claim(
+    Path(params): Path<BoardClaimTokenParam>,
+) -> Json<BoardClaimChallengeResponse> {
+    let _ = params;
+    Json(BoardClaimChallengeResponse {
+        status: "invalid".to_string(),
+        requires_sign_in: true,
+        expires_at: None,
+        claimed_by_user_id: None,
+    })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardClaimClaimBody {
+    pub code: Option<String>,
+}
+
+/// POST /api/board-claim/:token/claim — claim board ownership (stub: 404 no challenge in Rust).
+pub async fn post_board_claim_claim(
+    Path(params): Path<BoardClaimTokenParam>,
+    Json(_body): Json<Option<BoardClaimClaimBody>>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    let _ = params;
+    Err((axum::http::StatusCode::NOT_FOUND, "Board claim challenge not found".to_string()))
+}
+
 /// GET /api/auth/get-session — board session; local_trusted returns null (no login required)
 pub async fn get_session() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "data": null }))

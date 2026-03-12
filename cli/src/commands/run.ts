@@ -78,6 +78,19 @@ export async function runCommand(opts: RunOptions): Promise<void> {
     process.exit(1);
   }
 
+  if (config.database.mode === "embedded-postgres") {
+    p.log.step("Ensuring embedded PostgreSQL is running...");
+    const { resolveMigrationConnection, inspectMigrations, applyPendingMigrations } = await import("@paperclipai/db");
+    const connection = await resolveMigrationConnection();
+    process.env.DATABASE_URL = connection.connectionString;
+    p.log.message(pc.dim(`Database: ${connection.source}`));
+    const migrationState = await inspectMigrations(connection.connectionString);
+    if (migrationState.status === "needsMigrations" && migrationState.pendingMigrations.length > 0) {
+      p.log.step(`Applying ${migrationState.pendingMigrations.length} migration(s)...`);
+      await applyPendingMigrations(connection.connectionString);
+    }
+  }
+
   p.log.step("Starting Paperclip server (Rust)...");
   const { startedServer, exitPromise } = await startRustServer();
 
