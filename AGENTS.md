@@ -22,25 +22,23 @@ Before making changes, read in this order:
 
 ## 3. Repo Map
 
-- `server/`: Express REST API and orchestration services
-- `ui/`: React + Vite board UI
+- `server-rs/`: REST API (Rust, Axum + SQLx) and static UI serving
+- `ui/`: React + Vite board UI (build output served by server-rs)
 - `packages/db/`: Drizzle schema, migrations, DB clients
 - `packages/shared/`: shared types, constants, validators, API path constants
 - `doc/`: operational and product docs
 
-## 4. Dev Setup (Auto DB)
+## 4. Dev Setup
 
-Use embedded PGlite in dev by leaving `DATABASE_URL` unset.
+Backend là Rust (`server-rs/`). Cần PostgreSQL: set `DATABASE_URL` hoặc dùng embedded (xem `doc/DATABASE.md`).
 
 ```sh
 pnpm install
+pnpm dev:build-ui   # một lần hoặc khi đổi UI
 pnpm dev
 ```
 
-This starts:
-
-- API: `http://localhost:3100`
-- UI: `http://localhost:3100` (served by API server in dev middleware mode)
+`pnpm dev` chạy Rust server (script gọi `cargo run` trong server-rs). API + UI tại `http://localhost:3100`. Build UI trước nếu cần giao diện: `pnpm dev:build-ui`.
 
 Quick checks:
 
@@ -49,12 +47,7 @@ curl http://localhost:3100/api/health
 curl http://localhost:3100/api/companies
 ```
 
-Reset local dev DB:
-
-```sh
-rm -rf data/pglite
-pnpm dev
-```
+Reset local dev DB (khi dùng embedded): xem `doc/DATABASE.md`. Khi dùng Postgres bên ngoài: dùng `pnpm db:migrate` với `DATABASE_URL` tương ứng.
 
 ## 5. Core Engineering Rules
 
@@ -65,7 +58,7 @@ Every domain entity should be scoped to a company and company boundaries must be
 If you change schema/API behavior, update all impacted layers:
 - `packages/db` schema and exports
 - `packages/shared` types/constants/validators
-- `server` routes/services
+- `server-rs` routes/handlers
 - `ui` API clients and pages
 
 3. Preserve control-plane invariants.

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { bootstrapCeoInvite } from "./auth-bootstrap-ceo.js";
@@ -78,8 +78,8 @@ export async function runCommand(opts: RunOptions): Promise<void> {
     process.exit(1);
   }
 
-  p.log.step("Starting Paperclip server...");
-  const startedServer = await importServerEntry();
+  p.log.step("Starting Paperclip server (Rust)...");
+  const { startedServer, exitPromise } = await startRustServer();
 
   if (shouldGenerateBootstrapInviteAfterStart(config)) {
     p.log.step("Generating bootstrap CEO invite");
@@ -89,6 +89,8 @@ export async function runCommand(opts: RunOptions): Promise<void> {
       baseUrl: resolveBootstrapInviteBaseUrl(config, startedServer),
     });
   }
+
+  await exitPromise;
 }
 
 function resolveBootstrapInviteBaseUrl(
@@ -109,82 +111,67 @@ function resolveBootstrapInviteBaseUrl(
   return startedServer.apiUrl.replace(/\/api$/, "");
 }
 
-function formatError(err: unknown): string {
-  if (err instanceof Error) {
-    if (err.message && err.message.trim().length > 0) return err.message;
-    return err.name;
-  }
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
-}
+const PORT = Number(process.env.PORT) || 3100;
+const HOST = process.env.HOST || "127.0.0.1";
 
-function isModuleNotFoundError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const code = (err as { code?: unknown }).code;
-  if (code === "ERR_MODULE_NOT_FOUND") return true;
-  return err.message.includes("Cannot find module");
-}
-
-function getMissingModuleSpecifier(err: unknown): string | null {
-  if (!(err instanceof Error)) return null;
-  const packageMatch = err.message.match(/Cannot find package '([^']+)' imported from/);
-  if (packageMatch?.[1]) return packageMatch[1];
-  const moduleMatch = err.message.match(/Cannot find module '([^']+)'/);
-  if (moduleMatch?.[1]) return moduleMatch[1];
-  return null;
-}
-
-function maybeEnableUiDevMiddleware(entrypoint: string): void {
-  if (process.env.PAPERCLIP_UI_DEV_MIDDLEWARE !== undefined) return;
-  const normalized = entrypoint.replaceAll("\\", "/");
-  if (normalized.endsWith("/server/src/index.ts") || normalized.endsWith("@paperclipai/server/src/index.ts")) {
-    process.env.PAPERCLIP_UI_DEV_MIDDLEWARE = "true";
-  }
-}
-
-async function importServerEntry(): Promise<StartedServer> {
-  // Dev mode: try local workspace path (monorepo with tsx)
-  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-  const devEntry = path.resolve(projectRoot, "server/src/index.ts");
-  if (fs.existsSync(devEntry)) {
-    maybeEnableUiDevMiddleware(devEntry);
-    const mod = await import(pathToFileURL(devEntry).href);
-    return await startServerFromModule(mod, devEntry);
-  }
-
-  // Production mode: import the published @paperclipai/server package
-  try {
-    const mod = await import("@paperclipai/server");
-    return await startServerFromModule(mod, "@paperclipai/server");
-  } catch (err) {
-    const missingSpecifier = getMissingModuleSpecifier(err);
-    const missingServerEntrypoint = !missingSpecifier || missingSpecifier === "@paperclipai/server";
-    if (isModuleNotFoundError(err) && missingServerEntrypoint) {
-      throw new Error(
-        `Could not locate a Paperclip server entrypoint.\n` +
-          `Tried: ${devEntry}, @paperclipai/server\n` +
-          `${formatError(err)}`,
-      );
+async function waitForHealth(apiUrl: string, maxAttempts = 30): Promise<void> {
+  const url = `${apiUrl}/api/health`;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      // ignore
     }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`Server did not become ready at ${url}`);
+}
+
+async function startRustServer(): Promise<{
+  startedServer: StartedServer;
+  exitPromise: Promise<void>;
+}> {
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+  const serverRsDir = path.join(projectRoot, "server-rs");
+  if (!fs.existsSync(path.join(serverRsDir, "Cargo.toml"))) {
     throw new Error(
-      `Paperclip server failed to start.\n` +
-        `${formatError(err)}`,
+      `server-rs not found at ${serverRsDir}. Run from repo root or install Paperclip with Rust server.`,
     );
   }
+
+  const { spawn } = await import("node:child_process");
+  const child = spawn("cargo", ["run"], {
+    cwd: serverRsDir,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      UI_DIST: process.env.UI_DIST || path.join(projectRoot, "ui", "dist"),
+    },
+    shell: process.platform === "win32",
+  });
+
+  const apiUrl = `http://${HOST}:${PORT}`;
+  await waitForHealth(apiUrl);
+
+  const exitPromise = new Promise<void>((resolve) => {
+    child.on("exit", (code, signal) => {
+      if (signal) process.kill(process.pid, signal);
+      else process.exit(code ?? 0);
+      resolve();
+    });
+  });
+
+  const startedServer: StartedServer = {
+    apiUrl,
+    databaseUrl: process.env.DATABASE_URL || "",
+    host: HOST,
+    listenPort: PORT,
+  };
+
+  return { startedServer, exitPromise };
 }
 
 function shouldGenerateBootstrapInviteAfterStart(config: PaperclipConfig): boolean {
   return config.server.deploymentMode === "authenticated" && config.database.mode === "embedded-postgres";
-}
-
-async function startServerFromModule(mod: unknown, label: string): Promise<StartedServer> {
-  const startServer = (mod as { startServer?: () => Promise<StartedServer> }).startServer;
-  if (typeof startServer !== "function") {
-    throw new Error(`Paperclip server entrypoint did not export startServer(): ${label}`);
-  }
-  return await startServer();
 }

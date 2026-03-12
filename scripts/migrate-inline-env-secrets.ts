@@ -1,6 +1,16 @@
+/**
+ * Migrate inline env secrets to company_secrets (secret refs).
+ * Deprecated: Node server was removed; this script depended on server/services/secrets.
+ * To re-enable: port secret service logic to Rust or a standalone script using packages/db + local_encrypted provider.
+ */
 import { eq } from "drizzle-orm";
 import { agents, createDb } from "@paperclipai/db";
-import { secretService } from "../server/src/services/secrets.js";
+
+function secretService(_db: unknown) {
+  throw new Error(
+    "secrets:migrate-inline-env is disabled after Node server removal. Port secret service to Rust or implement here.",
+  );
+}
 
 const SENSITIVE_ENV_KEY_RE =
   /(api[-_]?key|access[-_]?token|auth(?:_?token)?|authorization|bearer|secret|passwd|password|credential|jwt|private[-_]?key|cookie|connectionstring)/i;

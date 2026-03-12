@@ -37,10 +37,7 @@ const workspacePaths = [
 ];
 
 // Workspace packages that are NOT bundled and must stay as npm dependencies.
-// These get published separately via Changesets and resolved at runtime.
-const externalWorkspacePackages = new Set([
-  "@paperclipai/server",
-]);
+const externalWorkspacePackages = new Set([]);
 
 // Collect all external dependencies from all workspace packages
 const allDeps = {};
@@ -53,11 +50,13 @@ for (const pkgPath of workspacePaths) {
 
   for (const [name, version] of Object.entries(deps)) {
     if (name.startsWith("@paperclipai/") && !externalWorkspacePackages.has(name)) continue;
-    // For external workspace packages, read their version directly
     if (externalWorkspacePackages.has(name)) {
-      const pkgDirMap = { "@paperclipai/server": "server" };
-      const wsPkg = readPkg(pkgDirMap[name]);
-      allDeps[name] = `^${wsPkg.version}`;
+      const pkgDirMap = { /* add workspace path for external @paperclipai/* if needed */ };
+      const dir = pkgDirMap[name];
+      if (dir) {
+        const wsPkg = readPkg(dir);
+        allDeps[name] = `^${wsPkg.version}`;
+      }
       continue;
     }
     // Keep the more specific (pinned) version if conflict

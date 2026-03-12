@@ -14,6 +14,8 @@ Current implementation status:
 
 - Node.js 20+
 - pnpm 9+
+- Rust 1.75+ (for backend; `rustup` recommended)
+- PostgreSQL (or embedded; see `doc/DATABASE.md`)
 
 ## Dependency Lockfile Policy
 
@@ -29,23 +31,13 @@ From repo root:
 
 ```sh
 pnpm install
+pnpm dev:build-ui   # once, or when UI changes (builds ui/dist for Rust to serve)
 pnpm dev
 ```
 
-This starts:
+This starts the **Rust backend** (`server-rs/`) via `cargo run`. API + UI at `http://localhost:3100`. UI is served from `ui/dist` (build with `pnpm dev:build-ui`). Set `DATABASE_URL` for Postgres; see `doc/DATABASE.md` for embedded option.
 
-- API server: `http://localhost:3100`
-- UI: served by the API server in dev middleware mode (same origin as API)
-
-`pnpm dev` runs the server in watch mode and restarts on changes from workspace packages (including adapter packages). Use `pnpm dev:once` to run without file watching.
-
-Tailscale/private-auth dev mode:
-
-```sh
-pnpm dev --tailscale-auth
-```
-
-This runs dev as `authenticated/private` and binds the server to `0.0.0.0` for private-network access.
+Use `pnpm dev:once` to run without migration prompt. For Tailscale/private auth, set env (e.g. `PAPERCLIP_DEPLOYMENT_MODE=authenticated`) before `pnpm dev`.
 
 Allow additional private hostnames (for example custom Tailscale hostnames):
 
