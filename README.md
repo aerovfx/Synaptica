@@ -6,13 +6,13 @@
   <a href="#installation"><strong>Installation</strong></a> &middot;
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
   <a href="https://paperclip.ing/docs"><strong>Docs</strong></a> &middot;
-  <a href="https://github.com/paperclipai/paperclip"><strong>GitHub</strong></a> &middot;
+  <a href="https://github.com/aerovfx/Synaptica"><strong>GitHub</strong></a> &middot;
   <a href="https://discord.gg/m4HZY7xNG3"><strong>Discord</strong></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/paperclipai/paperclip/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
-  <a href="https://github.com/paperclipai/paperclip/stargazers"><img src="https://img.shields.io/github/stars/paperclipai/paperclip?style=flat" alt="Stars" /></a>
+  <a href="https://github.com/aerovfx/Synaptica/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+  <a href="https://github.com/aerovfx/Synaptica/stargazers"><img src="https://img.shields.io/github/stars/aerovfx/Synaptica?style=flat" alt="Stars" /></a>
   <a href="https://discord.gg/m4HZY7xNG3"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
 </p>
 
@@ -81,14 +81,7 @@ It looks like a task manager — but under the hood it has org charts, budgets, 
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/paperclipai/paperclip.git
-   cd paperclip
-   ```
-
-   Or your fork:
-
-   ```bash
-   git clone https://github.com/YOUR_USER/Synaptica.git
+   git clone https://github.com/aerovfx/Synaptica.git
    cd Synaptica
    ```
 
@@ -335,8 +328,8 @@ We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 ## Community
 
 - [Discord](https://discord.gg/m4HZY7xNG3) — Join the community
-- [GitHub Issues](https://github.com/paperclipai/paperclip/issues) — bugs and feature requests
-- [GitHub Discussions](https://github.com/paperclipai/paperclip/discussions) — ideas and RFC
+- [GitHub Issues](https://github.com/aerovfx/Synaptica/issues) — bugs and feature requests
+- [GitHub Discussions](https://github.com/aerovfx/Synaptica/discussions) — ideas and RFC
 
 <br/>
 
@@ -344,7 +337,7 @@ We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 MIT © 2026 Paperclip
 
-[![Star History Chart](https://api.star-history.com/image?repos=paperclipai/paperclip&type=date&legend=top-left)](https://www.star-history.com/?repos=paperclipai%2Fpaperclip&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/image?repos=aerovfx/Synaptica&type=date&legend=top-left)](https://www.star-history.com/?repos=aerovfx%2FSynaptica&type=date&legend=top-left)
 
 <br/>
 
