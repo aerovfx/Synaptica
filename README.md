@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#installation"><strong>Installation</strong></a> &middot;
+  
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
   <a href="https://github.com/aerovfx/Synaptica#readme"><strong>Docs</strong></a> &middot;
   <a href="https://github.com/aerovfx/Synaptica"><strong>GitHub</strong></a> &middot;
