@@ -61,6 +61,8 @@ type AgentConfigFormProps = {
   hideInlineSave?: boolean;
   /** "cards" renders each section as heading + bordered card (for settings pages). Default: "inline" (border-b dividers). */
   sectionLayout?: "inline" | "cards";
+  /** Create mode only: show only adapter type + essential adapter fields; put the rest in "More options" collapsible. */
+  simpleMode?: boolean;
 } & (
   | {
       mode: "create";
@@ -159,8 +161,9 @@ const claudeThinkingEffortOptions = [
 /* ---- Form ---- */
 
 export function AgentConfigForm(props: AgentConfigFormProps) {
-  const { mode, adapterModels: externalModels } = props;
+  const { mode, adapterModels: externalModels, simpleMode: simpleModeProp } = props;
   const isCreate = mode === "create";
+  const simpleMode = isCreate && !!simpleModeProp;
   const cards = props.sectionLayout === "cards";
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
@@ -307,6 +310,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
   // Section toggle state — advanced always starts collapsed
   const [runPolicyAdvancedOpen, setRunPolicyAdvancedOpen] = useState(false);
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   // Popover states
   const [modelOpen, setModelOpen] = useState(false);
   const [thinkingEffortOpen, setThinkingEffortOpen] = useState(false);
@@ -560,8 +564,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             </Field>
           )}
 
-          {/* Prompt template (create mode only — edit mode shows this in Identity) */}
-          {isLocal && isCreate && (
+          {/* Prompt template (create mode only — edit mode shows this in Identity; hidden in simpleMode, shown in More options) */}
+          {isLocal && isCreate && !simpleMode && (
             <Field label="Prompt Template" hint={help.promptTemplate}>
               <MarkdownEditor
                 value={val!.promptTemplate}
@@ -583,6 +587,146 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
       </div>
 
+      {/* ---- More options (simpleMode) or direct Permissions & Run Policy ---- */}
+      {simpleMode ? (
+        <CollapsibleSection
+          title="More options (heartbeat, model, prompt template…)"
+          bordered={!cards}
+          open={moreOptionsOpen}
+          onToggle={() => setMoreOptionsOpen(!moreOptionsOpen)}
+        >
+          <div className="space-y-4">
+            {isLocal && isCreate && (
+              <Field label="Prompt Template" hint={help.promptTemplate}>
+                <MarkdownEditor
+                  value={val!.promptTemplate}
+                  onChange={(v) => set!({ promptTemplate: v })}
+                  placeholder="You are agent {{ agent.name }}. Your role is {{ agent.role }}..."
+                  contentClassName="min-h-[88px] text-sm font-mono"
+                  imageUploadHandler={async (file) => {
+                    const namespace = "agents/drafts/prompt-template";
+                    const asset = await uploadMarkdownImage.mutateAsync({ file, namespace });
+                    return asset.contentPath;
+                  }}
+                />
+              </Field>
+            )}
+            {isLocal && (
+              <div className={cn(!cards && "border-b border-border")}>
+                {cards
+                  ? <h3 className="text-sm font-medium mb-3">Permissions &amp; Configuration</h3>
+                  : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Permissions &amp; Configuration</div>
+                }
+                <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+                  <Field label="Command" hint={help.localCommand}>
+                    <DraftInput
+                      value={val!.command}
+                      onCommit={(v) => set!({ command: v })}
+                      immediate
+                      className={inputClass}
+                      placeholder={
+                        adapterType === "codex_local"
+                          ? "codex"
+                          : adapterType === "cursor"
+                            ? "agent"
+                            : adapterType === "opencode_local"
+                              ? "opencode"
+                              : "claude"
+                      }
+                    />
+                  </Field>
+                  <ModelDropdown
+                    models={models}
+                    value={currentModelId}
+                    onChange={(v) => set!({ model: v })}
+                    open={modelOpen}
+                    onOpenChange={setModelOpen}
+                    allowDefault={adapterType !== "opencode_local"}
+                    required={adapterType === "opencode_local"}
+                    groupByProvider={adapterType === "opencode_local"}
+                  />
+                  {fetchedModelsError && (
+                    <p className="text-xs text-destructive">
+                      {fetchedModelsError instanceof Error
+                        ? fetchedModelsError.message
+                        : "Failed to load adapter models."}
+                    </p>
+                  )}
+                  <ThinkingEffortDropdown
+                    value={currentThinkingEffort}
+                    options={thinkingEffortOptions}
+                    onChange={(v) => set!({ thinkingEffort: v })}
+                    open={thinkingEffortOpen}
+                    onOpenChange={setThinkingEffortOpen}
+                  />
+                  {adapterType === "codex_local" &&
+                    codexSearchEnabled &&
+                    currentThinkingEffort === "minimal" && (
+                      <p className="text-xs text-amber-400">
+                        Codex may reject `minimal` thinking when search is enabled.
+                      </p>
+                    )}
+                  <Field label="Bootstrap prompt (first run)" hint={help.bootstrapPrompt}>
+                    <MarkdownEditor
+                      value={val!.bootstrapPrompt}
+                      onChange={(v) => set!({ bootstrapPrompt: v })}
+                      placeholder="Optional initial setup prompt for the first run"
+                      contentClassName="min-h-[44px] text-sm font-mono"
+                      imageUploadHandler={async (file) => {
+                        const asset = await uploadMarkdownImage.mutateAsync({
+                          file,
+                          namespace: "agents/drafts/bootstrap-prompt",
+                        });
+                        return asset.contentPath;
+                      }}
+                    />
+                  </Field>
+                  {adapterType === "claude_local" && (
+                    <ClaudeLocalAdvancedFields {...adapterFieldProps} />
+                  )}
+                  <Field label="Extra args (comma-separated)" hint={help.extraArgs}>
+                    <DraftInput
+                      value={val!.extraArgs}
+                      onCommit={(v) => set!({ extraArgs: v })}
+                      immediate
+                      className={inputClass}
+                      placeholder="e.g. --verbose, --foo=bar"
+                    />
+                  </Field>
+                  <Field label="Environment variables" hint={help.envVars}>
+                    <EnvVarEditor
+                      value={((val!.envBindings ?? EMPTY_ENV) as Record<string, EnvBinding>)}
+                      secrets={availableSecrets}
+                      onCreateSecret={async (name, value) => {
+                        const created = await createSecret.mutateAsync({ name, value });
+                        return created;
+                      }}
+                      onChange={(env) => set!({ envBindings: env ?? {}, envVars: "" })}
+                    />
+                  </Field>
+                </div>
+              </div>
+            )}
+            <div className={cn(!cards && "border-b border-border")}>
+              <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+                <ToggleWithNumber
+                  label="Heartbeat on interval"
+                  hint={help.heartbeatInterval}
+                  checked={val!.heartbeatEnabled}
+                  onCheckedChange={(v) => set!({ heartbeatEnabled: v })}
+                  number={val!.intervalSec}
+                  onNumberChange={(v) => set!({ intervalSec: v })}
+                  numberLabel="sec"
+                  numberPrefix="Run heartbeat every"
+                  numberHint={help.intervalSec}
+                  showNumber={val!.heartbeatEnabled}
+                />
+              </div>
+            </div>
+          </div>
+        </CollapsibleSection>
+      ) : (
+        <>
       {/* ---- Permissions & Configuration ---- */}
       {isLocal && (
         <div className={cn(!cards && "border-b border-border")}>
@@ -848,6 +992,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           </CollapsibleSection>
           </div>
         </div>
+      )}
+        </>
       )}
 
     </div>

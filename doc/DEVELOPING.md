@@ -37,7 +37,21 @@ pnpm dev
 
 This starts the **Rust backend** (`server-rs/`) via `cargo run`. API + UI at `http://localhost:3100`. UI is served from `ui/dist` (build with `pnpm dev:build-ui`). Set `DATABASE_URL` for Postgres; see `doc/DATABASE.md` for embedded option.
 
-Use `pnpm dev:once` to run without migration prompt. For Tailscale/private auth, set env (e.g. `PAPERCLIP_DEPLOYMENT_MODE=authenticated`) before `pnpm dev`.
+Use `pnpm dev:once` to run without migration prompt.
+
+### Environment variables (server-rs)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HOST` | `127.0.0.1` | Bind host |
+| `PORT` | `3100` | Bind port |
+| `DATABASE_URL` | — | PostgreSQL connection string (required for full API) |
+| `UI_DIST` | `../ui/dist` if present | Directory containing built UI (`index.html` + assets) |
+| `DB_POOL_MAX_SIZE` | `10` | Max connections in the PostgreSQL pool |
+| `DB_POOL_ACQUIRE_TIMEOUT_SECS` | `5` | Timeout (seconds) when acquiring a connection from the pool |
+| `DB_POOL_IDLE_TIMEOUT_SECS` | — | Idle timeout (seconds) for connections returned to the pool; unset = driver default |
+| `SCHEDULER_INTERVAL_SECS` | `60` | Heartbeat scheduler tick interval (seconds); recommended 30–120 |
+| `RUST_LOG` | `info,tower_http=debug` | Log level (e.g. `info`, `debug`, `warn`) | For Tailscale/private auth, set env (e.g. `PAPERCLIP_DEPLOYMENT_MODE=authenticated`) before `pnpm dev`.
 
 Allow additional private hostnames (for example custom Tailscale hostnames):
 

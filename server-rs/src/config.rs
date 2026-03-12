@@ -8,6 +8,14 @@ pub struct Config {
     pub port: u16,
     /// Directory containing built UI (index.html + assets). If set, served at /.
     pub ui_dist: Option<PathBuf>,
+    /// DB pool max connections (env: DB_POOL_MAX_SIZE).
+    pub db_pool_max_size: u32,
+    /// DB pool acquire timeout in seconds (env: DB_POOL_ACQUIRE_TIMEOUT_SECS).
+    pub db_pool_acquire_timeout_secs: u64,
+    /// DB pool idle timeout in seconds; None = use driver default (env: DB_POOL_IDLE_TIMEOUT_SECS).
+    pub db_pool_idle_timeout_secs: Option<u64>,
+    /// Heartbeat scheduler tick interval in seconds (env: SCHEDULER_INTERVAL_SECS).
+    pub scheduler_interval_secs: u64,
 }
 
 impl Config {
@@ -37,11 +45,31 @@ impl Config {
             })
             .filter(|p| p.join("index.html").exists());
 
+        let db_pool_max_size = env::var("DB_POOL_MAX_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
+        let db_pool_acquire_timeout_secs = env::var("DB_POOL_ACQUIRE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(5);
+        let db_pool_idle_timeout_secs = env::var("DB_POOL_IDLE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok());
+        let scheduler_interval_secs = env::var("SCHEDULER_INTERVAL_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(60);
+
         Self {
             database_url,
             host,
             port,
             ui_dist,
+            db_pool_max_size,
+            db_pool_acquire_timeout_secs,
+            db_pool_idle_timeout_secs,
+            scheduler_interval_secs,
         }
     }
 }

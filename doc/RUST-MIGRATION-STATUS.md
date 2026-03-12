@@ -1,6 +1,6 @@
 # Đánh giá tiến trình chuyển đổi Node → Rust
 
-**Trạng thái:** Đã loại bỏ thư mục `server/` (Node). Backend chạy hoàn toàn trên Rust (`server-rs/`). `pnpm dev` và `paperclipai run` khởi động Rust server.
+**Trạng thái:** Đã loại bỏ thư mục `server/` (Node). Backend chạy hoàn toàn trên Rust (`server-rs/`). `pnpm dev` và `paperclipai run` khởi động Rust server. Cấu hình backend (pool DB, scheduler) theo env — xem `doc/RUST-BACKEND-OPTIMIZATION-PLAN.md` (Phase 1 đã áp dụng).
 
 ## Tổng quan
 

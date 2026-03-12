@@ -1,6 +1,3 @@
-<p align="center">
-  <img src="doc/assets/header.png" alt="Synaptica — runs your business" width="720" />
-</p>
 
 <p align="center">
   
@@ -285,6 +282,16 @@ Monitor and manage your autonomous businesses from anywhere.
 
 See [doc/DEVELOPING.md](doc/DEVELOPING.md) for the full development guide and [doc/DATABASE.md](doc/DATABASE.md) for database options.
 
+### Documentation
+
+| Doc | Mô tả |
+| --- | ----- |
+| [doc/GOAL.md](doc/GOAL.md) | Mục tiêu sản phẩm |
+| [doc/SPEC-implementation.md](doc/SPEC-implementation.md) | Spec V1, contract triển khai |
+| [doc/DEVELOPING.md](doc/DEVELOPING.md) | Hướng dẫn phát triển |
+| [doc/DATABASE.md](doc/DATABASE.md) | Cơ sở dữ liệu, migrations |
+| [doc/RUST-MIGRATION-STATUS.md](doc/RUST-MIGRATION-STATUS.md) | Trạng thái migration Rust, adapters, OpenFang |
+
 <br/>
 
 ## FAQ
@@ -308,8 +315,9 @@ By default, agents run on scheduled heartbeats and event-based triggers (task as
 
 ## Roadmap
 
-- ⚪ Get OpenClaw onboarding easier
-- ⚪ Get cloud agents working e.g. Cursor / e2b agents
+- ⚪ OpenClaw onboarding — simplify invite/join flow and first-agent setup
+- ⚪ [OpenFang](https://github.com/RightNow-AI/openfang) onboarding — tích hợp hoặc hướng dẫn dùng Agent OS Rust (40 channel adapters, 7 Hands) với Synaptica
+- ⚪ Cloud / remote agents — [Cursor](https://cursor.com), [e2b](https://e2b.dev), và tương tự; chạy agent trong môi trường sandbox hoặc hosted
 - ⚪ ClipMart — buy and sell entire agent companies
 - ⚪ Easy agent configurations / easier to understand
 - ⚪ Better support for harness engineering

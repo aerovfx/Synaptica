@@ -1,7 +1,8 @@
 import type { CreateConfigValues } from "@paperclipai/adapter-utils";
 
+/** Defaults for new agents. Process = run any CLI; minimal setup. */
 export const defaultCreateValues: CreateConfigValues = {
-  adapterType: "claude_local",
+  adapterType: "process",
   cwd: "",
   instructionsFilePath: "",
   promptTemplate: "",

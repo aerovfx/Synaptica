@@ -187,12 +187,22 @@ export function NewAgent() {
 
   const currentReportsTo = (agents ?? []).find((a) => a.id === reportsTo);
 
+  const adapterTypesForPresets: CreateConfigValues["adapterType"][] = [
+    "process",
+    "http",
+    "claude_local",
+    "codex_local",
+    "cursor",
+    "opencode_local",
+    "openclaw_gateway",
+  ];
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="text-lg font-semibold">New Agent</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Advanced agent configuration
+          Name your agent, choose how it runs, then create. Expand “More options” for heartbeat and advanced settings.
         </p>
       </div>
 
@@ -216,6 +226,37 @@ export function NewAgent() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
+        </div>
+
+        {/* Adapter presets: one-click type selection */}
+        <div className="px-4 py-2 border-t border-border">
+          <p className="text-xs font-medium text-muted-foreground mb-2">How does this agent run?</p>
+          <div className="flex flex-wrap gap-1.5">
+            {adapterTypesForPresets.map((t) => {
+              const enabled = SUPPORTED_ADVANCED_ADAPTER_TYPES.has(t) || t === "process" || t === "http";
+              const selected = configValues.adapterType === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  disabled={!enabled}
+                  onClick={() => {
+                    if (enabled) setConfigValues((prev) => createValuesForAdapterType(t));
+                  }}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                    selected
+                      ? "border-primary bg-primary/10 text-primary"
+                      : enabled
+                        ? "border-border hover:bg-accent/50 text-foreground"
+                        : "border-border opacity-50 cursor-not-allowed text-muted-foreground",
+                  )}
+                >
+                  {getUIAdapter(t).label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Property chips: Role + Reports To */}
@@ -299,12 +340,13 @@ export function NewAgent() {
           </Popover>
         </div>
 
-        {/* Shared config form */}
+        {/* Shared config form (simple mode: only essential fields; "More options" for the rest) */}
         <AgentConfigForm
           mode="create"
           values={configValues}
           onChange={(patch) => setConfigValues((prev) => ({ ...prev, ...patch }))}
           adapterModels={adapterModels}
+          simpleMode
         />
 
         {/* Footer */}

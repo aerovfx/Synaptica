@@ -131,6 +131,16 @@ The database mode is controlled by `DATABASE_URL`:
 
 Your Drizzle schema (`packages/db/src/schema/`) stays the same regardless of mode.
 
+### Connection pool (Rust server)
+
+When using `DATABASE_URL`, the Rust backend (`server-rs`) uses a connection pool. You can tune it with:
+
+- `DB_POOL_MAX_SIZE` (default `10`) — max connections in the pool
+- `DB_POOL_ACQUIRE_TIMEOUT_SECS` (default `5`) — timeout when acquiring a connection
+- `DB_POOL_IDLE_TIMEOUT_SECS` (optional) — idle timeout for connections
+
+See **Environment variables (server-rs)** in `doc/DEVELOPING.md` for the full list.
+
 ## Secret storage
 
 Paperclip stores secret metadata and versions in:

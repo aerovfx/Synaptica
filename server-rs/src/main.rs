@@ -36,11 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = Config::from_env();
 
     let api_router = if let Some(ref database_url) = config.database_url {
-        let pool = db::create_pool(database_url).await?;
-        tracing::info!("PostgreSQL connected");
+        let pool = db::create_pool(database_url, &config).await?;
+        tracing::info!("PostgreSQL connected (pool max_size={})", config.db_pool_max_size);
         let pool_scheduler = pool.clone();
+        let scheduler_interval_secs = config.scheduler_interval_secs;
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(scheduler_interval_secs));
             loop {
                 interval.tick().await;
                 if let Err(e) = scheduler::run_heartbeat_scheduler_tick(&pool_scheduler).await {
