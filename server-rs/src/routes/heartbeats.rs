@@ -50,7 +50,7 @@ pub struct WakeupBody {
 
 /// POST /api/agents/:id/wakeup — enqueue a heartbeat run and start adapter execution (process/http).
 pub async fn wakeup_agent(
-    State(pool): State<PgPool>,
+    State(state): State<crate::routes::ApiState>,
     Path(params): Path<crate::routes::agents::AgentIdParam>,
     Json(body): Json<WakeupBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -58,14 +58,14 @@ pub async fn wakeup_agent(
         Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
     let company_id: Uuid = sqlx::query_scalar("SELECT company_id FROM agents WHERE id = $1")
         .bind(agent_id)
-        .fetch_optional(&pool)
+        .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
 
     let status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = $1")
         .bind(agent_id)
-        .fetch_optional(&pool)
+        .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -95,7 +95,7 @@ pub async fn wakeup_agent(
     .bind(&source)
     .bind(trigger_detail.as_deref())
     .bind(now)
-    .execute(&pool)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -106,11 +106,16 @@ pub async fn wakeup_agent(
          external_run_id, context_snapshot, created_at, updated_at FROM heartbeat_runs WHERE id = $1",
     )
     .bind(run_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    crate::runner::spawn_run(pool.clone(), run_id);
+    crate::runner::spawn_run(
+        state.pool.clone(),
+        run_id,
+        state.runner_semaphore.clone(),
+        state.runner_limits.clone(),
+    );
 
     Ok(Json(serde_json::to_value(&row).unwrap()))
 }

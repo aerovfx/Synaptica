@@ -51,7 +51,13 @@ Use `pnpm dev:once` to run without migration prompt.
 | `DB_POOL_ACQUIRE_TIMEOUT_SECS` | `5` | Timeout (seconds) when acquiring a connection from the pool |
 | `DB_POOL_IDLE_TIMEOUT_SECS` | — | Idle timeout (seconds) for connections returned to the pool; unset = driver default |
 | `SCHEDULER_INTERVAL_SECS` | `60` | Heartbeat scheduler tick interval (seconds); recommended 30–120 |
-| `RUST_LOG` | `info,tower_http=debug` | Log level (e.g. `info`, `debug`, `warn`) | For Tailscale/private auth, set env (e.g. `PAPERCLIP_DEPLOYMENT_MODE=authenticated`) before `pnpm dev`.
+| `HTTP_BODY_MAX_BYTES` | `2097152` (2 MiB) | Max request body size (bytes) |
+| `RUNNER_MAX_CONCURRENT_RUNS` | `0` | Max concurrent adapter runs (0 = unlimited) |
+| `RUNNER_HTTP_MAX_TIMEOUT_MS` | `300000` (5 min) | Cap for HTTP adapter timeout (ms) |
+| `RUNNER_PROCESS_MAX_TIMEOUT_SECS` | `86400` (24 h) | Cap for process adapter timeout (sec) |
+| `RUST_LOG` | `info,tower_http=debug` | Log level (e.g. `info`, `debug`, `warn`) |
+
+For Tailscale/private auth, set env (e.g. `PAPERCLIP_DEPLOYMENT_MODE=authenticated`) before `pnpm dev`.
 
 Allow additional private hostnames (for example custom Tailscale hostnames):
 

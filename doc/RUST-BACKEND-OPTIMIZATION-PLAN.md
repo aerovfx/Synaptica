@@ -2,7 +2,7 @@
 
 **Mục đích:** Cấu hình và tối ưu backend Rust cho môi trường dev và production, dễ vận hành và mở rộng sau này.
 
-**Trạng thái:** Phase 1 đã triển khai (config, DB pool, scheduler). Các phase sau chờ triển khai.
+**Trạng thái:** Phase 1 và Phase 2 đã triển khai (config, DB pool, scheduler; HTTP body limit + compression; runner semaphore + timeout caps). Phase 3 trở đi chờ triển khai.
 
 ---
 

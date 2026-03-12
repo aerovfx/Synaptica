@@ -17,12 +17,17 @@ mod projects;
 mod secrets;
 mod workspaces;
 
+use axum::extract::FromRef;
 use axum::middleware;
 use axum::routing::{delete, get, post};
 use axum::Router;
-use sqlx::PgPool;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
+use crate::config::Config;
+use crate::runner::RunnerLimits;
 use crate::auth;
+use sqlx::PgPool;
 
 use self::activity::list_activity;
 use self::agents::{create_agent, create_agent_key, get_agent, get_agent_me, get_runtime_state, heartbeat_agent, invoke_agent, list_agent_keys, list_agents, list_config_revisions, list_task_sessions, pause_agent, resume_agent, revoke_agent_key, terminate_agent, update_agent, update_runtime_state};
@@ -43,7 +48,39 @@ use self::join_requests::{get_join_request, list_join_requests};
 use self::heartbeats::{cancel_run, get_run, get_run_log, list_run_events, list_runs, wakeup_agent};
 use self::misc::{board_claim, get_session, get_skill, llm_config, sidebar_badges, skills_index};
 
-pub fn api_routes(pool: PgPool) -> Router {
+/// Shared state for API routes (pool + optional runner semaphore + runner limits).
+#[derive(Clone)]
+pub struct ApiState {
+    pub pool: PgPool,
+    pub runner_semaphore: Option<Arc<Semaphore>>,
+    pub runner_limits: RunnerLimits,
+}
+
+impl FromRef<ApiState> for PgPool {
+    fn from_ref(state: &ApiState) -> PgPool {
+        state.pool.clone()
+    }
+}
+
+/// Build shared API state from pool and config (used when DATABASE_URL is set).
+pub fn build_api_state(pool: PgPool, config: &Config) -> ApiState {
+    let runner_semaphore = if config.runner_max_concurrent_runs > 0 {
+        Some(Arc::new(Semaphore::new(config.runner_max_concurrent_runs)))
+    } else {
+        None
+    };
+    let runner_limits = RunnerLimits {
+        max_http_timeout_ms: config.runner_http_max_timeout_ms,
+        max_process_timeout_secs: config.runner_process_max_timeout_secs,
+    };
+    ApiState {
+        pool,
+        runner_semaphore,
+        runner_limits,
+    }
+}
+
+pub fn api_routes(state: ApiState) -> Router<ApiState> {
     Router::new()
         .route("/health", get(health))
         .route("/companies", get(list_companies).post(create_company))
@@ -117,8 +154,8 @@ pub fn api_routes(pool: PgPool) -> Router {
         .route("/companies/:company_id/costs/by-project", get(get_costs_by_project))
         .route("/companies/:company_id/dashboard", get(dashboard))
         .route("/companies/:company_id/activity", get(list_activity))
-        .route_layer(middleware::from_fn_with_state(pool.clone(), auth::actor_middleware))
-        .with_state(pool)
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth::actor_middleware))
+        .with_state(state)
 }
 
 /// Routes when DATABASE_URL is not set (health only; others return 503)

@@ -16,6 +16,14 @@ pub struct Config {
     pub db_pool_idle_timeout_secs: Option<u64>,
     /// Heartbeat scheduler tick interval in seconds (env: SCHEDULER_INTERVAL_SECS).
     pub scheduler_interval_secs: u64,
+    /// Max request body size in bytes (env: HTTP_BODY_MAX_BYTES). 0 = use default 2 MiB.
+    pub http_body_max_bytes: usize,
+    /// Max concurrent adapter runs; 0 = unlimited (env: RUNNER_MAX_CONCURRENT_RUNS).
+    pub runner_max_concurrent_runs: usize,
+    /// Cap for HTTP adapter timeout in ms (env: RUNNER_HTTP_MAX_TIMEOUT_MS).
+    pub runner_http_max_timeout_ms: u64,
+    /// Cap for process adapter timeout in seconds (env: RUNNER_PROCESS_MAX_TIMEOUT_SECS).
+    pub runner_process_max_timeout_secs: u64,
 }
 
 impl Config {
@@ -61,6 +69,23 @@ impl Config {
             .and_then(|s| s.parse().ok())
             .unwrap_or(60);
 
+        let http_body_max_bytes = env::var("HTTP_BODY_MAX_BYTES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2 * 1024 * 1024); // 2 MiB
+        let runner_max_concurrent_runs = env::var("RUNNER_MAX_CONCURRENT_RUNS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let runner_http_max_timeout_ms = env::var("RUNNER_HTTP_MAX_TIMEOUT_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(300_000); // 5 min
+        let runner_process_max_timeout_secs = env::var("RUNNER_PROCESS_MAX_TIMEOUT_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(86400); // 24 h
+
         Self {
             database_url,
             host,
@@ -70,6 +95,10 @@ impl Config {
             db_pool_acquire_timeout_secs,
             db_pool_idle_timeout_secs,
             scheduler_interval_secs,
+            http_body_max_bytes,
+            runner_max_concurrent_runs,
+            runner_http_max_timeout_ms,
+            runner_process_max_timeout_secs,
         }
     }
 }

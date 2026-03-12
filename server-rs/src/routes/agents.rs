@@ -67,7 +67,7 @@ pub async fn get_agent_me(
         "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE id = $1",
     )
     .bind(agent_id)
-    .fetch_optional(&pool)
+        .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -98,7 +98,7 @@ pub async fn get_agent(
         "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE id = $1",
     )
     .bind(&params.id)
-    .fetch_optional(&pool)
+        .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -152,7 +152,7 @@ pub async fn heartbeat_agent(
     )
     .bind(&params.id)
     .bind(now)
-    .fetch_optional(&pool)
+        .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -183,7 +183,7 @@ pub async fn get_runtime_state(
         "SELECT agent_id, company_id, adapter_type, session_id, state_json, last_run_id, last_run_status, total_input_tokens, total_output_tokens, total_cached_input_tokens, total_cost_cents, last_error, created_at, updated_at FROM agent_runtime_state WHERE agent_id = $1",
     )
     .bind(&params.id)
-    .fetch_optional(&pool)
+        .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Runtime state not found".to_string()))?;
@@ -258,7 +258,7 @@ pub struct InvokeBody {
 
 /// POST /api/agents/:id/invoke — create a heartbeat run and start adapter execution (process/http).
 pub async fn invoke_agent(
-    State(pool): State<PgPool>,
+    State(state): State<crate::routes::ApiState>,
     Path(params): Path<AgentIdParam>,
     body: Option<Json<InvokeBody>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
@@ -266,14 +266,14 @@ pub async fn invoke_agent(
         Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
     let company_id: Uuid = sqlx::query_scalar("SELECT company_id FROM agents WHERE id = $1")
         .bind(agent_id)
-        .fetch_optional(&pool)
+        .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
 
     let status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = $1")
         .bind(agent_id)
-        .fetch_optional(&pool)
+        .fetch_optional(&state.pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -303,7 +303,7 @@ pub async fn invoke_agent(
     .bind(&source)
     .bind(trigger_detail.as_deref())
     .bind(now)
-    .execute(&pool)
+    .execute(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -314,11 +314,16 @@ pub async fn invoke_agent(
          external_run_id, context_snapshot, created_at, updated_at FROM heartbeat_runs WHERE id = $1",
     )
     .bind(run_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    crate::runner::spawn_run(pool.clone(), run_id);
+    crate::runner::spawn_run(
+        state.pool.clone(),
+        run_id,
+        state.runner_semaphore.clone(),
+        state.runner_limits.clone(),
+    );
 
     Ok(Json(serde_json::to_value(&row).unwrap()))
 }
@@ -387,7 +392,7 @@ pub async fn update_agent(
     .bind(body.adapter_type.as_deref())
     .bind(body.adapter_config.as_ref())
     .bind(now)
-    .fetch_optional(&pool)
+        .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;

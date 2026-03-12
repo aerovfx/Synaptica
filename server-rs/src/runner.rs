@@ -5,9 +5,11 @@ use std::os::unix::process::ExitStatusExt;
 use chrono::Utc;
 use sqlx::PgPool;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
+use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 const MAX_EXCERPT_BYTES: usize = 32 * 1024;
@@ -15,10 +17,34 @@ const DEFAULT_TIMEOUT_SEC: u64 = 900;
 const DEFAULT_GRACE_SEC: u64 = 15;
 const DEFAULT_HTTP_TIMEOUT_MS: u64 = 15_000;
 
+/// Timeout caps for adapter runs (from config).
+#[derive(Clone)]
+pub struct RunnerLimits {
+    pub max_http_timeout_ms: u64,
+    pub max_process_timeout_secs: u64,
+}
+
 /// Spawns the run executor in the background. Call this after creating a queued run.
-pub fn spawn_run(pool: PgPool, run_id: Uuid) {
+/// If `semaphore` is Some, acquires a permit before running (drops when done).
+pub fn spawn_run(
+    pool: PgPool,
+    run_id: Uuid,
+    semaphore: Option<Arc<Semaphore>>,
+    limits: RunnerLimits,
+) {
     tokio::spawn(async move {
-        if let Err(e) = run_heartbeat_run(&pool, run_id).await {
+        let _permit = if let Some(sem) = semaphore {
+            match sem.acquire_owned().await {
+                Ok(p) => Some(p),
+                Err(_) => {
+                    tracing::warn!("heartbeat run {} semaphore closed", run_id);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+        if let Err(e) = run_heartbeat_run(&pool, run_id, &limits).await {
             tracing::warn!("heartbeat run {} failed: {}", run_id, e);
         }
     });
@@ -35,7 +61,11 @@ const LEGACY_ADAPTER_TYPES: &[&str] = &[
 ];
 
 /// Loads run + agent, marks running, executes adapter (process/http/legacy), updates run on completion.
-pub async fn run_heartbeat_run(pool: &PgPool, run_id: Uuid) -> Result<(), String> {
+pub async fn run_heartbeat_run(
+    pool: &PgPool,
+    run_id: Uuid,
+    limits: &RunnerLimits,
+) -> Result<(), String> {
     let (_run, agent_id, company_id, agent_name, adapter_type, adapter_config) = {
         let row: Option<(
             String,  // status
@@ -73,8 +103,12 @@ pub async fn run_heartbeat_run(pool: &PgPool, run_id: Uuid) -> Result<(), String
     .map_err(|e| e.to_string())?;
 
     let result = match adapter_type.as_str() {
-        "process" => run_process_adapter(pool, run_id, agent_id, company_id, &adapter_config).await,
-        "http" => run_http_adapter(pool, run_id, agent_id, company_id, &adapter_config).await,
+        "process" => {
+            run_process_adapter(pool, run_id, agent_id, company_id, &adapter_config, limits).await
+        }
+        "http" => {
+            run_http_adapter(pool, run_id, agent_id, company_id, &adapter_config, limits).await
+        }
         t if LEGACY_ADAPTER_TYPES.contains(&t) => {
             run_legacy_adapter(
                 pool,
@@ -227,6 +261,7 @@ async fn run_process_adapter(
     agent_id: Uuid,
     company_id: Uuid,
     config: &serde_json::Value,
+    limits: &RunnerLimits,
 ) -> Result<(), String> {
     let cmd = config
         .get("command")
@@ -249,6 +284,7 @@ async fn run_process_adapter(
         .get("timeoutSec")
         .and_then(|t| t.as_u64())
         .unwrap_or(DEFAULT_TIMEOUT_SEC);
+    let timeout_sec = timeout_sec.min(limits.max_process_timeout_secs);
     let _grace_sec = config
         .get("graceSec")
         .and_then(|g| g.as_u64())
@@ -457,6 +493,7 @@ async fn run_http_adapter(
     agent_id: Uuid,
     company_id: Uuid,
     config: &serde_json::Value,
+    limits: &RunnerLimits,
 ) -> Result<(), String> {
     let url = config
         .get("url")
@@ -466,6 +503,7 @@ async fn run_http_adapter(
         .get("timeoutMs")
         .and_then(|t| t.as_u64())
         .unwrap_or(DEFAULT_HTTP_TIMEOUT_MS);
+    let timeout_ms = timeout_ms.min(limits.max_http_timeout_ms);
 
     let body = serde_json::json!({
         "runId": run_id.to_string(),
