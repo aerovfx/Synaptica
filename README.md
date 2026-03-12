@@ -105,12 +105,15 @@ It looks like a task manager — but under the hood it has org charts, budgets, 
 
 ```bash
 pnpm install
-pnpm dev:build-ui   # một lần, hoặc khi đổi UI
+pnpm dev:build-ui
 pnpm dev
 ```
 
+*(Build UI chỉ cần chạy một lần, hoặc khi đổi UI.)*
+
 - Chạy nhanh không hỏi migrate: `pnpm dev:once`
 - Chạy full (onboard + doctor + server): `pnpm paperclipai run`
+- Nếu gặp lỗi Postgres *role "user" does not exist*: bỏ set `DATABASE_URL` (unset) để dùng embedded PostgreSQL, hoặc sửa connection string đúng user/pass của máy.
 
 5. **(Optional) Use your own PostgreSQL**
 
