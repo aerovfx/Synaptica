@@ -108,7 +108,7 @@ It looks like a task manager — but under the hood it has org charts, budgets, 
 5. **(Optional) Use your own PostgreSQL**
 
    ```bash
-   export DATABASE_URL=postgres://user:pass@localhost:5432/paperclip
+   export DATABASE_URL=postgres://user:pass@localhost:5432/synaptica
    pnpm db:migrate   # apply migrations once
    pnpm dev
    ```
@@ -118,7 +118,7 @@ It looks like a task manager — but under the hood it has org charts, budgets, 
    If you use agents with these adapter types, set the repo root so the Rust server can run the Node adapter script:
 
    ```bash
-   export PAPERCLIP_PROJECT_ROOT=/absolute/path/to/paperclip   # e.g. /Users/you/paperclip
+   export PAPERCLIP_PROJECT_ROOT=/absolute/path/to/Synaptica   # e.g. /Users/you/Synaptica
    pnpm dev
    ```
 
@@ -133,11 +133,11 @@ This can auto-onboard, run checks, and start the server. See [doc/DEVELOPING.md]
 ### Docker
 
 ```bash
-docker build -t paperclip-local .
-docker run --name paperclip -p 3100:3100 -e HOST=0.0.0.0 \
-  -e PAPERCLIP_HOME=/paperclip \
-  -v "$(pwd)/data/docker-paperclip:/paperclip" \
-  paperclip-local
+docker build -t synaptica-local .
+docker run --name synaptica -p 3100:3100 -e HOST=0.0.0.0 \
+  -e PAPERCLIP_HOME=/synaptica \
+  -v "$(pwd)/data/docker-synaptica:/synaptica" \
+  synaptica-local
 ```
 
 Or with Compose:
