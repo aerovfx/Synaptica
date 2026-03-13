@@ -60,6 +60,7 @@ pub async fn create_cost_event(
     Path(params): Path<CompanyIdParam>,
     Json(body): Json<CreateCostEventBody>,
 ) -> Result<(StatusCode, Json<CostEvent>), (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company_id".to_string()))?;
     let id = Uuid::new_v4();
     let agent_id: Uuid = Uuid::parse_str(&body.agent_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent_id".to_string()))?;
     let issue_id: Option<Uuid> = body.issue_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
@@ -76,7 +77,7 @@ pub async fn create_cost_event(
         "INSERT INTO cost_events (id, company_id, agent_id, issue_id, project_id, goal_id, billing_code, provider, model, input_tokens, output_tokens, cost_cents, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id, company_id, agent_id, issue_id, project_id, goal_id, billing_code, provider, model, input_tokens, output_tokens, cost_cents, occurred_at, created_at",
     )
     .bind(id)
-    .bind(&params.company_id)
+    .bind(company_id)
     .bind(agent_id)
     .bind(issue_id)
     .bind(project_id)
@@ -99,23 +100,49 @@ pub async fn get_costs_summary(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<CostSummaryResponse>, (StatusCode, String)> {
-    let company_id = &params.company_id;
-    let month_spend: i64 = sqlx::query_scalar(
+    let company_id = Uuid::parse_str(&params.company_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company_id".to_string()))?;
+    let month_spend: i64 = match sqlx::query_scalar(
         "SELECT coalesce(sum(cost_cents), 0)::bigint FROM cost_events WHERE company_id = $1 AND occurred_at >= date_trunc('month', now())",
     )
     .bind(company_id)
     .fetch_one(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let total_spend: i64 = sqlx::query_scalar(
+    .await {
+        Ok(v) => v,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("does not exist") || msg.contains("relation") {
+                tracing::warn!(
+                    "GET /api/companies/:companyId/costs/summary month_spend failed (no cost_events table yet?): {}",
+                    e
+                );
+                0
+            } else {
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
+            }
+        }
+    };
+    let total_spend: i64 = match sqlx::query_scalar(
         "SELECT coalesce(sum(cost_cents), 0)::bigint FROM cost_events WHERE company_id = $1",
     )
     .bind(company_id)
     .fetch_one(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .await {
+        Ok(v) => v,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("does not exist") || msg.contains("relation") {
+                tracing::warn!(
+                    "GET /api/companies/:companyId/costs/summary total_spend failed (no cost_events table yet?): {}",
+                    e
+                );
+                0
+            } else {
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
+            }
+        }
+    };
     Ok(Json(CostSummaryResponse {
-        company_id: company_id.clone(),
+        company_id: company_id.to_string(),
         month_spend_cents: month_spend,
         total_spend_cents: total_spend,
     }))
@@ -126,13 +153,27 @@ pub async fn get_costs_by_agent(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<CostByAgentRow>>, (StatusCode, String)> {
-    let rows = sqlx::query_as::<_, (Uuid, i64)>(
+    let company_id = Uuid::parse_str(&params.company_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company_id".to_string()))?;
+    let rows = match sqlx::query_as::<_, (Uuid, i64)>(
         "SELECT agent_id, sum(cost_cents)::bigint FROM cost_events WHERE company_id = $1 GROUP BY agent_id",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .await {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("does not exist") || msg.contains("relation") {
+                tracing::warn!(
+                    "GET /api/companies/:companyId/costs/by-agent failed (no cost_events table yet?): {}",
+                    e
+                );
+                Vec::new()
+            } else {
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
+            }
+        }
+    };
     Ok(Json(
         rows.into_iter()
             .map(|(id, spend)| CostByAgentRow {
@@ -148,13 +189,27 @@ pub async fn get_costs_by_project(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<CostByProjectRow>>, (StatusCode, String)> {
-    let rows = sqlx::query_as::<_, (Option<Uuid>, i64)>(
+    let company_id = Uuid::parse_str(&params.company_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company_id".to_string()))?;
+    let rows = match sqlx::query_as::<_, (Option<Uuid>, i64)>(
         "SELECT project_id, sum(cost_cents)::bigint FROM cost_events WHERE company_id = $1 GROUP BY project_id",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .await {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("does not exist") || msg.contains("relation") {
+                tracing::warn!(
+                    "GET /api/companies/:companyId/costs/by-project failed (no cost_events table yet?): {}",
+                    e
+                );
+                Vec::new()
+            } else {
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
+            }
+        }
+    };
     Ok(Json(
         rows.into_iter()
             .map(|(id, spend)| CostByProjectRow {
@@ -178,15 +233,16 @@ pub async fn patch_company_budgets(
     Path(params): Path<CompanyIdParam>,
     Json(body): Json<UpdateBudgetBody>,
 ) -> Result<Json<Company>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company_id".to_string()))?;
     let cents = body.budget_monthly_cents.unwrap_or(0);
     if cents < 0 {
         return Err((StatusCode::BAD_REQUEST, "budget_monthly_cents must be non-negative".to_string()));
     }
     let now = chrono::Utc::now();
     let row = sqlx::query_as::<_, Company>(
-        "UPDATE companies SET budget_monthly_cents = $2, updated_at = $3 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at",
+        "UPDATE companies SET budget_monthly_cents = $2, updated_at = $3 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, NULL as ui_template, created_at, updated_at",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .bind(cents)
     .bind(now)
     .fetch_optional(&pool)
@@ -207,6 +263,7 @@ pub async fn patch_agent_budgets(
     Path(params): Path<AgentIdParam>,
     Json(body): Json<UpdateBudgetBody>,
 ) -> Result<Json<Agent>, (StatusCode, String)> {
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
     let cents = body.budget_monthly_cents.unwrap_or(0);
     if cents < 0 {
         return Err((StatusCode::BAD_REQUEST, "budget_monthly_cents must be non-negative".to_string()));
@@ -215,7 +272,7 @@ pub async fn patch_agent_budgets(
     let row = sqlx::query_as::<_, Agent>(
         "UPDATE agents SET budget_monthly_cents = $2, updated_at = $3 WHERE id = $1 RETURNING id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at",
     )
-    .bind(&params.id)
+    .bind(agent_id)
     .bind(cents)
     .bind(now)
     .fetch_optional(&pool)

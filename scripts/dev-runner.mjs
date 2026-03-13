@@ -6,6 +6,7 @@
  * Rust server (which runs with cwd=server-rs and would not see repo root .env).
  */
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import path from "node:path";
@@ -59,7 +60,27 @@ async function runPnpm(args, options = {}) {
     const child = spawn(pnpmBin, args, {
       stdio: options.stdio ?? ["ignore", "pipe", "pipe"],
       env: options.env ?? process.env,
+      cwd: options.cwd ?? process.cwd(),
       shell: process.platform === "win32",
+    });
+    let stdoutBuffer = "";
+    let stderrBuffer = "";
+    if (child.stdout) child.stdout.on("data", (chunk) => { stdoutBuffer += String(chunk); });
+    if (child.stderr) child.stderr.on("data", (chunk) => { stderrBuffer += String(chunk); });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      resolve({ code: code ?? 0, signal, stdout: stdoutBuffer, stderr: stderrBuffer });
+    });
+  });
+}
+
+async function runNode(args, options = {}) {
+  return await new Promise((resolve, reject) => {
+    const child = spawn("node", args, {
+      stdio: options.stdio ?? ["ignore", "pipe", "pipe"],
+      env: options.env ?? process.env,
+      cwd: options.cwd ?? process.cwd(),
+      shell: false,
     });
     let stdoutBuffer = "";
     let stderrBuffer = "";
@@ -76,12 +97,31 @@ async function maybePreflightMigrations() {
   if (mode !== "watch") return;
   if (process.env.PAPERCLIP_MIGRATION_PROMPT === "never") return;
 
-  const status = await runPnpm(
-    ["--filter", "@paperclipai/db", "exec", "tsx", "src/migration-status.ts", "--json"],
-    { env },
-  );
+  const migrationStatusScript = path.join(repoRoot, "packages", "db", "src", "migration-status.ts");
+  const tsxCandidates = [
+    path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs"),
+    path.join(repoRoot, "packages", "db", "node_modules", "tsx", "dist", "cli.mjs"),
+    path.join(repoRoot, "cli", "node_modules", "tsx", "dist", "cli.mjs"),
+  ];
+  const tsxCli = tsxCandidates.find((p) => existsSync(p));
+  if (!tsxCli) {
+    process.stderr.write(
+      "tsx not found. From repo root run: pnpm install\n",
+    );
+    process.exit(1);
+  }
+  const status = await runNode([tsxCli, migrationStatusScript, "--json"], { env, cwd: repoRoot });
   if (status.code !== 0) {
-    process.stderr.write(status.stderr || status.stdout);
+    const out = status.stderr || status.stdout;
+    if (out.includes("ECONNREFUSED") && (out.includes("5432") || out.includes("127.0.0.1"))) {
+      process.stderr.write(
+        "Database connection refused (is PostgreSQL running?).\n" +
+          "  • To use embedded Postgres: remove or comment out DATABASE_URL in .env\n" +
+          "  • To use local Postgres: start it (e.g. docker compose up -d db) and keep DATABASE_URL in .env\n",
+      );
+    } else {
+      process.stderr.write(out);
+    }
     process.exit(status.code);
   }
 

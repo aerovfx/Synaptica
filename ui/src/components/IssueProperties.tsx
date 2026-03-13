@@ -6,6 +6,7 @@ import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
+import { boardsApi } from "../api/boards";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
@@ -17,7 +18,7 @@ import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2 } from "lucide-react";
+import { User, Hexagon, LayoutGrid, ArrowUpRight, Tag, Plus, Trash2 } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
 // TODO(issue-worktree-support): re-enable this UI once the workflow is ready to ship.
@@ -108,6 +109,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [boardSearch, setBoardSearch] = useState("");
+  const [pickedBoardIdInPicker, setPickedBoardIdInPicker] = useState<string | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelSearch, setLabelSearch] = useState("");
   const [newLabelName, setNewLabelName] = useState("");
@@ -130,6 +134,23 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     queryFn: () => projectsApi.list(companyId!),
     enabled: !!companyId,
   });
+
+  const { data: boards = [] } = useQuery({
+    queryKey: queryKeys.boards.list(companyId!),
+    queryFn: () => boardsApi.list(companyId!),
+    enabled: !!companyId,
+  });
+
+  const boardIdForColumns = pickedBoardIdInPicker ?? issue.boardId ?? null;
+  const { data: boardColumns = [] } = useQuery({
+    queryKey: queryKeys.boards.columns(companyId!, boardIdForColumns ?? ""),
+    queryFn: () => boardsApi.listColumns(companyId!, boardIdForColumns!),
+    enabled: !!companyId && !!boardIdForColumns && boardOpen,
+  });
+  const sortedBoardColumns = useMemo(
+    () => [...boardColumns].sort((a, b) => a.position - b.position),
+    [boardColumns],
+  );
   const { orderedProjects } = useProjectOrder({
     projects: projects ?? [],
     companyId,
@@ -458,6 +479,122 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     </>
   );
 
+  const boardName = issue.boardId
+    ? (boards.find((b) => b.id === issue.boardId)?.name ?? null)
+    : null;
+  const columnName = issue.boardColumnId
+    ? sortedBoardColumns.find((c) => c.id === issue.boardColumnId)?.name ?? null
+    : issue.boardId
+      ? "Unplaced"
+      : null;
+  const boardTrigger = issue.boardId ? (
+    <>
+      <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <span className="text-sm truncate">
+        {boardName ?? issue.boardId.slice(0, 8)}
+        {columnName ? ` › ${columnName}` : ""}
+      </span>
+    </>
+  ) : (
+    <>
+      <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-sm text-muted-foreground">No board</span>
+    </>
+  );
+
+  const boardContent = (
+    <>
+      <input
+        className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
+        placeholder="Search boards..."
+        value={boardSearch}
+        onChange={(e) => setBoardSearch(e.target.value)}
+        autoFocus={!inline}
+      />
+      <div className="max-h-48 overflow-y-auto overscroll-contain">
+        <button
+          className={cn(
+            "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
+            !issue.boardId && "bg-accent",
+          )}
+          onClick={() => {
+            onUpdate({ boardId: null, boardColumnId: null });
+            setBoardOpen(false);
+            setPickedBoardIdInPicker(null);
+          }}
+        >
+          No board
+        </button>
+        {!boardIdForColumns
+          ? boards
+              .filter((b) => {
+                if (!boardSearch.trim()) return true;
+                return b.name.toLowerCase().includes(boardSearch.toLowerCase());
+              })
+              .map((b) => (
+                <button
+                  key={b.id}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
+                    b.id === issue.boardId && "bg-accent",
+                  )}
+                  onClick={() => setPickedBoardIdInPicker(b.id)}
+                >
+                  <LayoutGrid className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  {b.name}
+                </button>
+              ))
+          : (
+            <>
+              <button
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground"
+                onClick={() => setPickedBoardIdInPicker(null)}
+              >
+                ← Back to boards
+              </button>
+              <button
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                  !issue.boardColumnId && issue.boardId === boardIdForColumns && "bg-accent",
+                )}
+                onClick={() => {
+                  onUpdate({
+                    boardId: boardIdForColumns,
+                    boardColumnId: null,
+                    position: 1,
+                  });
+                  setBoardOpen(false);
+                  setPickedBoardIdInPicker(null);
+                }}
+              >
+                Unplaced
+              </button>
+              {sortedBoardColumns.map((col) => (
+                <button
+                  key={col.id}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 pl-4",
+                    issue.boardColumnId === col.id && "bg-accent",
+                  )}
+                  onClick={() => {
+                    onUpdate({
+                      boardId: boardIdForColumns,
+                      boardColumnId: col.id,
+                      position: 1,
+                    });
+                    setBoardOpen(false);
+                    setPickedBoardIdInPicker(null);
+                  }}
+                >
+                  {col.name}
+                </button>
+              ))}
+            </>
+          )}
+      </div>
+    </>
+  );
+
   return (
     <div className="space-y-4">
       <div className="space-y-1">
@@ -528,6 +665,33 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           ) : undefined}
         >
           {projectContent}
+        </PropertyPicker>
+
+        <PropertyPicker
+          inline={inline}
+          label="Board"
+          open={boardOpen}
+          onOpenChange={(open) => {
+            setBoardOpen(open);
+            if (!open) {
+              setBoardSearch("");
+              setPickedBoardIdInPicker(null);
+            }
+          }}
+          triggerContent={boardTrigger}
+          triggerClassName="min-w-0 max-w-full"
+          popoverClassName="w-fit min-w-[11rem]"
+          extra={issue.boardId ? (
+            <Link
+              to={`/boards/${issue.boardId}`}
+              className="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          ) : undefined}
+        >
+          {boardContent}
         </PropertyPicker>
 
         {currentProjectSupportsExecutionWorkspace && (

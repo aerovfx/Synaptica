@@ -77,6 +77,13 @@ export type {
   Project,
   ProjectGoalRef,
   ProjectWorkspace,
+  Board,
+  BoardColumn,
+  Sprint,
+  CompanySpace,
+  CompanyDepartment,
+  CompanyPost,
+  CompanyClass,
   WorkspaceRuntimeService,
   ExecutionWorkspaceStrategyType,
   ExecutionWorkspaceMode,
@@ -241,7 +248,12 @@ export {
 
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
-export { deriveProjectUrlKey, normalizeProjectUrlKey } from "./project-url-key.js";
+export {
+  deriveProjectUrlKey,
+  deriveProjectUrlKeyLegacy,
+  normalizeProjectUrlKey,
+  normalizeProjectUrlKeyLegacy,
+} from "./project-url-key.js";
 export {
   PROJECT_MENTION_SCHEME,
   buildProjectMentionHref,

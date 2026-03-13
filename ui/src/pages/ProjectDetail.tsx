@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { useParams, useNavigate, useLocation, Navigate } from "@/lib/router";
+import { useParams, useNavigate, useLocation, Navigate, Link } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PROJECT_COLORS, isUuidLike } from "@paperclipai/shared";
 import { projectsApi } from "../api/projects";
@@ -27,8 +27,10 @@ type ProjectTab = "overview" | "list" | "configuration";
 function resolveProjectTab(pathname: string, projectId: string): ProjectTab | null {
   const segments = pathname.split("/").filter(Boolean);
   const projectsIdx = segments.indexOf("projects");
-  if (projectsIdx === -1 || segments[projectsIdx + 1] !== projectId) return null;
+  if (projectsIdx === -1 || projectsIdx + 2 >= segments.length) return null;
+  const segmentId = segments[projectsIdx + 1];
   const tab = segments[projectsIdx + 2];
+  if (segmentId !== projectId) return null;
   if (tab === "overview") return "overview";
   if (tab === "configuration") return "configuration";
   if (tab === "issues") return "list";
@@ -191,25 +193,36 @@ function ProjectIssuesList({ projectId, companyId }: { projectId: string; compan
 /* ── Main project page ── */
 
 export function ProjectDetail() {
-  const { companyPrefix, projectId, filter } = useParams<{
+  const params = useParams<{
     companyPrefix?: string;
-    projectId: string;
+    projectId?: string;
     filter?: string;
   }>();
-  const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
+  const location = useLocation();
+  const { companies, selectedCompanyId, setSelectedCompanyId, loading: companiesLoading } = useCompany();
   const { closePanel } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const location = useLocation();
   const [fieldSaveStates, setFieldSaveStates] = useState<Partial<Record<ProjectConfigFieldKey, ProjectFieldSaveState>>>({});
   const fieldSaveRequestIds = useRef<Partial<Record<ProjectConfigFieldKey, number>>>({});
   const fieldSaveTimers = useRef<Partial<Record<ProjectConfigFieldKey, ReturnType<typeof setTimeout>>>>({});
-  const routeProjectRef = projectId ?? "";
+  const pathname = location.pathname;
+  const routeProjectRef = useMemo(() => {
+    if (params.projectId) return params.projectId;
+    const segments = pathname.split("/").filter(Boolean);
+    const projectsIdx = segments.indexOf("projects");
+    if (projectsIdx !== -1 && segments[projectsIdx + 1]) return segments[projectsIdx + 1]!;
+    return "";
+  }, [params.projectId, pathname]);
+  const companyPrefix = params.companyPrefix?.trim();
+  const filter = params.filter;
   const routeCompanyId = useMemo(() => {
     if (!companyPrefix) return null;
     const requestedPrefix = companyPrefix.toUpperCase();
-    return companies.find((company) => company.issuePrefix.toUpperCase() === requestedPrefix)?.id ?? null;
+    return (
+      companies.find((c) => (c.issuePrefix ?? "").trim().toUpperCase() === requestedPrefix)?.id ?? null
+    );
   }, [companies, companyPrefix]);
   const lookupCompanyId = routeCompanyId ?? selectedCompanyId ?? undefined;
   const canFetchProject = routeProjectRef.length > 0 && (isUuidLike(routeProjectRef) || Boolean(lookupCompanyId));
@@ -335,6 +348,18 @@ export function ProjectDetail() {
 
   if (isLoading) return <PageSkeleton variant="detail" />;
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
+  // URL has company prefix + project id but project not loaded: show loading while resolving company, or error if company unknown
+  if (routeProjectRef && companyPrefix && !project) {
+    if (!canFetchProject) {
+      if (companiesLoading) return <PageSkeleton variant="detail" />;
+      return (
+        <p className="text-sm text-destructive">
+          Company not found for prefix &quot;{companyPrefix}&quot;. Check the URL or select a company.
+        </p>
+      );
+    }
+    return <PageSkeleton variant="detail" />;
+  }
   if (!project) return null;
 
   const handleTabChange = (tab: ProjectTab) => {
@@ -356,12 +381,20 @@ export function ProjectDetail() {
             onSelect={(color) => updateProject.mutate({ color })}
           />
         </div>
-        <InlineEditor
-          value={project.name}
-          onSave={(name) => updateProject.mutate({ name })}
-          as="h2"
-          className="text-xl font-bold"
-        />
+        <div className="flex-1 min-w-0">
+          <InlineEditor
+            value={project.name}
+            onSave={(name) => updateProject.mutate({ name })}
+            as="h2"
+            className="text-xl font-bold"
+          />
+          <Link
+            to="/boards"
+            className="text-xs text-muted-foreground hover:text-foreground mt-0.5 inline-flex items-center gap-1"
+          >
+            Kanban boards
+          </Link>
+        </div>
       </div>
 
       <Tabs value={activeTab ?? "list"} onValueChange={(value) => handleTabChange(value as ProjectTab)}>

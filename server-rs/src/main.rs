@@ -9,6 +9,8 @@ mod runner;
 mod scheduler;
 
 use axum::extract::DefaultBodyLimit;
+use axum::response::Redirect;
+use axum::routing::get;
 use axum::Router;
 use axum::http::header::{HeaderName, HeaderValue};
 use std::net::SocketAddr;
@@ -31,6 +33,17 @@ fn static_fallback_service(ui_dist: PathBuf) -> ServeDir<ServeFile> {
 
 fn static_router(ui_dist: PathBuf) -> Router {
     Router::new().nest_service("/", static_fallback_service(ui_dist))
+}
+
+fn docs_router<S>(docs_dir: PathBuf) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    Router::new()
+        // Serve /docs/ (with trailing slash)
+        .nest_service("/", ServeDir::new(&docs_dir))
+        // Specific redirect for /dashboard
+        .route("/dashboard", get(|| async { Redirect::permanent("/docs/api/dashboard.md") }))
 }
 
 #[tokio::main]
@@ -85,6 +98,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         } else {
             tracing::info!("UI_DIST not set; run from server-rs with ../ui/dist or set UI_DIST for UI");
         }
+
+        if let Some(ref docs_dir) = config.docs_dir {
+            tracing::info!("Serving docs from {}", docs_dir.display());
+            app = app
+                .nest("/docs", docs_router(docs_dir.clone()))
+                // Case-insensitive /DOCS redirect
+                .route("/DOCS", get(|| async { Redirect::permanent("/docs/") }))
+                .route("/DOCS/*path", get(|| async { Redirect::permanent("/docs/") }));
+        }
         let app = app
             .with_state(state)
             .layer(DefaultBodyLimit::max(config.http_body_max_bytes))
@@ -103,18 +125,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .layer(SetResponseHeaderLayer::overriding(
                 HeaderName::from_static("referrer-policy"),
                 HeaderValue::from_static("strict-origin-when-cross-origin"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("permissions-policy"),
+                HeaderValue::from_static("accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"),
             ));
-        tracing::info!("Paperclip (Rust) listening on http://{}", addr);
+        let app = if let Some(age) = config.hsts_max_age_secs {
+            let hsts_val = HeaderValue::from_str(&format!("max-age={}; includeSubDomains", age))
+                .unwrap_or_else(|_| HeaderValue::from_static("max-age=31536000; includeSubDomains"));
+            app.layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("strict-transport-security"),
+                hsts_val,
+            ))
+        } else {
+            app
+        };
+        tracing::info!("Synaptica (Rust) listening on http://{}", addr);
         axum::serve(listener, app.into_make_service()).await?;
     } else {
         tracing::warn!("DATABASE_URL not set: only /api/health is available; other list routes return 503");
         let api_router = Router::new().nest("/api", routes::api_routes_no_db());
-        let app = if let Some(ref ui_dist) = config.ui_dist {
+        let mut app = if let Some(ref ui_dist) = config.ui_dist {
             tracing::info!("Serving UI from {}", ui_dist.display());
             api_router.merge(static_router(ui_dist.clone()))
         } else {
             api_router
         };
+
+        if let Some(ref docs_dir) = config.docs_dir {
+            tracing::info!("Serving docs from {}", docs_dir.display());
+            app = app
+                .nest("/docs", docs_router(docs_dir.clone()))
+                .route("/DOCS", get(|| async { Redirect::permanent("/docs/") }))
+                .route("/DOCS/*path", get(|| async { Redirect::permanent("/docs/") }));
+        }
         let app = app
             .layer(DefaultBodyLimit::max(config.http_body_max_bytes))
             .layer(CompressionLayer::new())
@@ -132,8 +176,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .layer(SetResponseHeaderLayer::overriding(
                 HeaderName::from_static("referrer-policy"),
                 HeaderValue::from_static("strict-origin-when-cross-origin"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("permissions-policy"),
+                HeaderValue::from_static("accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"),
             ));
-        tracing::info!("Paperclip (Rust) listening on http://{}", addr);
+        let app = if let Some(age) = config.hsts_max_age_secs {
+            let hsts_val = HeaderValue::from_str(&format!("max-age={}; includeSubDomains", age))
+                .unwrap_or_else(|_| HeaderValue::from_static("max-age=31536000; includeSubDomains"));
+            app.layer(SetResponseHeaderLayer::overriding(
+                HeaderName::from_static("strict-transport-security"),
+                hsts_val,
+            ))
+        } else {
+            app
+        };
+        tracing::info!("Synaptica (Rust) listening on http://{}", addr);
         axum::serve(listener, app.into_make_service()).await?;
     }
     Ok(())

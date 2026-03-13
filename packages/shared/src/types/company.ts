@@ -11,6 +11,7 @@ export interface Company {
   spentMonthlyCents: number;
   requireBoardApprovalForNewAgents: boolean;
   brandColor: string | null;
+  uiTemplate: "company" | "school" | "hospital";
   createdAt: Date;
   updatedAt: Date;
 }

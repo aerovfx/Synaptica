@@ -1,6 +1,6 @@
 # Database
 
-Paperclip uses PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/). There are three ways to run the database, from simplest to most production-ready.
+Synaptica uses PostgreSQL via [Drizzle ORM](https://orm.drizzle.team/). There are three ways to run the database, from simplest to most production-ready.
 
 ## 1. Embedded PostgreSQL — zero config
 
@@ -25,7 +25,7 @@ If you need to apply pending migrations manually, run:
 pnpm db:migrate
 ```
 
-When `DATABASE_URL` is unset, this command targets the current embedded PostgreSQL instance for your active Paperclip config/instance.
+When `DATABASE_URL` is unset, this command targets the current embedded PostgreSQL instance for your active Synaptica config/instance.
 
 This mode is ideal for local development and one-command installs.
 
@@ -222,7 +222,7 @@ See **Environment variables (server-rs)** in `doc/DEVELOPING.md` for the full li
 
 ## Secret storage
 
-Paperclip stores secret metadata and versions in:
+Synaptica stores secret metadata and versions in:
 
 - `company_secrets`
 - `company_secret_versions`

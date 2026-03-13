@@ -1,14 +1,14 @@
 ---
 name: release
 description: >
-  Coordinate a full Paperclip release across engineering verification, npm,
+  Coordinate a full Synaptica release across engineering verification, npm,
   GitHub, website publishing, and announcement follow-up. Use when leadership
   asks to ship a release, not merely to discuss version bumps.
 ---
 
 # Release Coordination Skill
 
-Run the full Paperclip release as a maintainer workflow, not just an npm publish.
+Run the full Synaptica release as a maintainer workflow, not just an npm publish.
 
 This skill coordinates:
 
@@ -39,7 +39,7 @@ Before proceeding, verify all of the following:
 4. The release SHA has passed the verification gate or is about to.
 5. If package manifests changed, the CI-owned `pnpm-lock.yaml` refresh is already merged on `master` before the release branch is cut.
 6. npm publish rights are available locally, or the GitHub release workflow is being used with trusted publishing.
-7. If running through Paperclip, you have issue context for status updates and follow-up task creation.
+7. If running through Synaptica, you have issue context for status updates and follow-up task creation.
 
 If any precondition fails, stop and report the blocker.
 
@@ -54,7 +54,7 @@ Collect these inputs up front:
 
 ## Step 0 — Release Model
 
-Paperclip now uses this release model:
+Synaptica now uses this release model:
 
 1. Start or resume `release/X.Y.Z`
 2. Draft the **stable** changelog as `releases/vX.Y.Z.md`
@@ -226,7 +226,7 @@ Create or verify follow-up work for:
 
 - website changelog publishing
 - launch post / social announcement
-- any release summary in Paperclip issue context
+- any release summary in Synaptica issue context
 
 These should reference the stable release, not the canary.
 

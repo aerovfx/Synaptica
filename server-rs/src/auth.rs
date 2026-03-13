@@ -1,4 +1,4 @@
-//! Auth: actor resolution (board vs agent API key) and board-only guard.
+//! Auth: actor resolution (board vs agent API key), board-only guard, and agent company-scope enforcement.
 
 use axum::extract::FromRequestParts;
 use axum::extract::Request;
@@ -123,4 +123,45 @@ where
         }
         Ok(RequireBoard)
     }
+}
+
+/// Middleware: when the request path is /api/companies/:company_id/..., and the actor is an Agent,
+/// return 403 Forbidden if company_id from path does not match the agent's company.
+/// Board actors are not restricted.
+pub async fn require_agent_company_scope(
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path();
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    // Path is /api/companies/<company_id>/... so segments: ["api", "companies", "<uuid>", ...]
+    let path_company_id = if segments.len() >= 3 && segments.get(0) == Some(&"api") && segments.get(1) == Some(&"companies") {
+        segments.get(2).and_then(|s| Uuid::parse_str(s).ok())
+    } else {
+        None
+    };
+
+    let Some(path_company_id) = path_company_id else {
+        return next.run(request).await;
+    };
+
+    let actor = request.extensions().get::<Actor>();
+    let Some(actor) = actor else {
+        return next.run(request).await;
+    };
+
+    match actor {
+        Actor::Board => return next.run(request).await,
+        Actor::Agent { company_id, .. } => {
+            if *company_id != path_company_id {
+                return (
+                    StatusCode::FORBIDDEN,
+                    "Agents may only access resources of their own company",
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    next.run(request).await
 }

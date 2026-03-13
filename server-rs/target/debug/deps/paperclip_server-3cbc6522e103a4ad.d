@@ -1,6 +1,6 @@
-/Users/pixibox/Synaptica/server-rs/target/debug/deps/paperclip_server-3cbc6522e103a4ad.d: src/main.rs src/auth.rs src/config.rs src/db.rs src/metrics.rs src/models/mod.rs src/models/agent.rs src/models/agent_api_key.rs src/models/agent_config_revision.rs src/models/agent_runtime_state.rs src/models/agent_task_session.rs src/models/approval.rs src/models/approval_comment.rs src/models/asset.rs src/models/company.rs src/models/company_secret.rs src/models/cost_event.rs src/models/goal.rs src/models/heartbeat_run.rs src/models/heartbeat_run_event.rs src/models/agent_wakeup_request.rs src/models/issue.rs src/models/issue_attachment.rs src/models/issue_comment.rs src/models/project.rs src/models/project_workspace.rs src/request_id.rs src/routes/mod.rs src/routes/activity.rs src/routes/adapters.rs src/routes/admin.rs src/routes/agents.rs src/routes/events.rs src/routes/approvals.rs src/routes/assets.rs src/routes/companies.rs src/routes/costs.rs src/routes/dashboard.rs src/routes/goals.rs src/routes/heartbeats.rs src/routes/health.rs src/routes/invites.rs src/routes/issues.rs src/routes/join_requests.rs src/routes/labels.rs src/routes/llms.rs src/routes/members.rs src/routes/misc.rs src/routes/projects.rs src/routes/secrets.rs src/routes/workspaces.rs src/runner.rs src/scheduler.rs
+/Users/pixibox/Synaptica/server-rs/target/debug/deps/paperclip_server-3cbc6522e103a4ad.d: src/main.rs src/auth.rs src/config.rs src/db.rs src/metrics.rs src/models/mod.rs src/models/agent.rs src/models/agent_api_key.rs src/models/board.rs src/models/agent_config_revision.rs src/models/agent_runtime_state.rs src/models/agent_task_session.rs src/models/approval.rs src/models/approval_comment.rs src/models/asset.rs src/models/company.rs src/models/company_space.rs src/models/company_department.rs src/models/company_post.rs src/models/company_class.rs src/models/dms.rs src/models/company_secret.rs src/models/cost_event.rs src/models/goal.rs src/models/heartbeat_run.rs src/models/heartbeat_run_event.rs src/models/agent_wakeup_request.rs src/models/issue.rs src/models/issue_attachment.rs src/models/issue_comment.rs src/models/project.rs src/models/project_workspace.rs src/request_id.rs src/routes/mod.rs src/routes/activity.rs src/routes/adapters.rs src/routes/admin.rs src/routes/agents.rs src/routes/boards.rs src/routes/company_spaces.rs src/routes/company_departments.rs src/routes/company_posts.rs src/routes/company_classes.rs src/routes/dms.rs src/routes/events.rs src/routes/approvals.rs src/routes/assets.rs src/routes/companies.rs src/routes/costs.rs src/routes/dashboard.rs src/routes/goals.rs src/routes/heartbeats.rs src/routes/health.rs src/routes/invites.rs src/routes/issues.rs src/routes/join_requests.rs src/routes/labels.rs src/routes/llms.rs src/routes/members.rs src/routes/misc.rs src/routes/projects.rs src/routes/secrets.rs src/routes/sprints.rs src/routes/workspaces.rs src/runner.rs src/scheduler.rs
 
-/Users/pixibox/Synaptica/server-rs/target/debug/deps/paperclip_server-3cbc6522e103a4ad: src/main.rs src/auth.rs src/config.rs src/db.rs src/metrics.rs src/models/mod.rs src/models/agent.rs src/models/agent_api_key.rs src/models/agent_config_revision.rs src/models/agent_runtime_state.rs src/models/agent_task_session.rs src/models/approval.rs src/models/approval_comment.rs src/models/asset.rs src/models/company.rs src/models/company_secret.rs src/models/cost_event.rs src/models/goal.rs src/models/heartbeat_run.rs src/models/heartbeat_run_event.rs src/models/agent_wakeup_request.rs src/models/issue.rs src/models/issue_attachment.rs src/models/issue_comment.rs src/models/project.rs src/models/project_workspace.rs src/request_id.rs src/routes/mod.rs src/routes/activity.rs src/routes/adapters.rs src/routes/admin.rs src/routes/agents.rs src/routes/events.rs src/routes/approvals.rs src/routes/assets.rs src/routes/companies.rs src/routes/costs.rs src/routes/dashboard.rs src/routes/goals.rs src/routes/heartbeats.rs src/routes/health.rs src/routes/invites.rs src/routes/issues.rs src/routes/join_requests.rs src/routes/labels.rs src/routes/llms.rs src/routes/members.rs src/routes/misc.rs src/routes/projects.rs src/routes/secrets.rs src/routes/workspaces.rs src/runner.rs src/scheduler.rs
+/Users/pixibox/Synaptica/server-rs/target/debug/deps/paperclip_server-3cbc6522e103a4ad: src/main.rs src/auth.rs src/config.rs src/db.rs src/metrics.rs src/models/mod.rs src/models/agent.rs src/models/agent_api_key.rs src/models/board.rs src/models/agent_config_revision.rs src/models/agent_runtime_state.rs src/models/agent_task_session.rs src/models/approval.rs src/models/approval_comment.rs src/models/asset.rs src/models/company.rs src/models/company_space.rs src/models/company_department.rs src/models/company_post.rs src/models/company_class.rs src/models/dms.rs src/models/company_secret.rs src/models/cost_event.rs src/models/goal.rs src/models/heartbeat_run.rs src/models/heartbeat_run_event.rs src/models/agent_wakeup_request.rs src/models/issue.rs src/models/issue_attachment.rs src/models/issue_comment.rs src/models/project.rs src/models/project_workspace.rs src/request_id.rs src/routes/mod.rs src/routes/activity.rs src/routes/adapters.rs src/routes/admin.rs src/routes/agents.rs src/routes/boards.rs src/routes/company_spaces.rs src/routes/company_departments.rs src/routes/company_posts.rs src/routes/company_classes.rs src/routes/dms.rs src/routes/events.rs src/routes/approvals.rs src/routes/assets.rs src/routes/companies.rs src/routes/costs.rs src/routes/dashboard.rs src/routes/goals.rs src/routes/heartbeats.rs src/routes/health.rs src/routes/invites.rs src/routes/issues.rs src/routes/join_requests.rs src/routes/labels.rs src/routes/llms.rs src/routes/members.rs src/routes/misc.rs src/routes/projects.rs src/routes/secrets.rs src/routes/sprints.rs src/routes/workspaces.rs src/runner.rs src/scheduler.rs
 
 src/main.rs:
 src/auth.rs:
@@ -10,6 +10,7 @@ src/metrics.rs:
 src/models/mod.rs:
 src/models/agent.rs:
 src/models/agent_api_key.rs:
+src/models/board.rs:
 src/models/agent_config_revision.rs:
 src/models/agent_runtime_state.rs:
 src/models/agent_task_session.rs:
@@ -17,6 +18,11 @@ src/models/approval.rs:
 src/models/approval_comment.rs:
 src/models/asset.rs:
 src/models/company.rs:
+src/models/company_space.rs:
+src/models/company_department.rs:
+src/models/company_post.rs:
+src/models/company_class.rs:
+src/models/dms.rs:
 src/models/company_secret.rs:
 src/models/cost_event.rs:
 src/models/goal.rs:
@@ -34,6 +40,12 @@ src/routes/activity.rs:
 src/routes/adapters.rs:
 src/routes/admin.rs:
 src/routes/agents.rs:
+src/routes/boards.rs:
+src/routes/company_spaces.rs:
+src/routes/company_departments.rs:
+src/routes/company_posts.rs:
+src/routes/company_classes.rs:
+src/routes/dms.rs:
 src/routes/events.rs:
 src/routes/approvals.rs:
 src/routes/assets.rs:
@@ -52,6 +64,7 @@ src/routes/members.rs:
 src/routes/misc.rs:
 src/routes/projects.rs:
 src/routes/secrets.rs:
+src/routes/sprints.rs:
 src/routes/workspaces.rs:
 src/runner.rs:
 src/scheduler.rs:

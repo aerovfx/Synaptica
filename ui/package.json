@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "pnpm exec tsc -b && pnpm exec vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b"
+    "typecheck": "pnpm exec tsc -b"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

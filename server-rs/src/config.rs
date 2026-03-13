@@ -27,6 +27,10 @@ pub struct Config {
     pub runner_process_max_timeout_secs: u64,
     /// CORS allowed origins; empty = allow any (env: CORS_ORIGINS, comma-separated).
     pub cors_origins: Vec<String>,
+    /// When set, add Strict-Transport-Security header (use only behind HTTPS). Env: HSTS_MAX_AGE_SECS (e.g. 31536000).
+    pub hsts_max_age_secs: Option<u64>,
+    /// Directory containing documentation markdown files. Served at /docs.
+    pub docs_dir: Option<PathBuf>,
 }
 
 impl Config {
@@ -88,6 +92,19 @@ impl Config {
             })
             .filter(|p| p.join("index.html").exists());
 
+        let docs_dir = get("DOCS_DIR")
+            .map(PathBuf::from)
+            .or_else(|| {
+                let cwd = env::current_dir().ok()?;
+                let candidate = cwd.join("../docs");
+                if candidate.join("docs.json").exists() {
+                    Some(candidate.canonicalize().ok().unwrap_or(candidate))
+                } else {
+                    None
+                }
+            })
+            .filter(|p| p.join("docs.json").exists());
+
         let db_pool_max_size = get("DB_POOL_MAX_SIZE")
             .and_then(|s| s.parse().ok())
             .unwrap_or(10);
@@ -122,6 +139,8 @@ impl Config {
             })
             .unwrap_or_default();
 
+        let hsts_max_age_secs = get("HSTS_MAX_AGE_SECS").and_then(|s| s.parse().ok());
+
         Self {
             database_url,
             host,
@@ -136,6 +155,8 @@ impl Config {
             runner_http_max_timeout_ms,
             runner_process_max_timeout_secs,
             cors_origins,
+            hsts_max_age_secs,
+            docs_dir,
         }
     }
 }

@@ -17,6 +17,14 @@ Current implementation status:
 - Rust 1.75+ (for backend; `rustup` recommended)
 - PostgreSQL (or embedded; see `doc/DATABASE.md`)
 
+## Optimizing disk space (Node modules)
+
+To reduce disk usage:
+
+1. **Remove unused dependencies** — Root no longer keeps `cross-env` or `esbuild` (esbuild lives under `cli` as it is only used for the CLI build). Run `npx depcheck` at repo root or in a package to find other unused deps; remove only after confirming they are not used (e.g. in config or dynamic imports).
+2. **Prune the pnpm store** — After removing deps, run `pnpm store prune` to remove packages from the store that are no longer referenced by any project. Uses the store at `pnpm store path` (often `~/.local/share/pnpm/store` or `~/Library/pnpm/store` on macOS).
+3. **Clean install** — From repo root, `rm -rf node_modules && pnpm install` to get a minimal `node_modules` tree (pnpm already deduplicates via the store).
+
 ## Dependency Lockfile Policy
 
 GitHub Actions owns `pnpm-lock.yaml`.
@@ -85,7 +93,7 @@ pnpm paperclipai run
 
 ## Docker Quickstart (No local Node install)
 
-Build and run Paperclip in Docker:
+Build and run Synaptica in Docker:
 
 ```sh
 docker build -t paperclip-local .
@@ -134,7 +142,7 @@ pnpm paperclipai configure --section storage
 
 ## Default Agent Workspaces
 
-When a local agent run has no resolved project/session workspace, Paperclip falls back to an agent home workspace under the instance root:
+When a local agent run has no resolved project/session workspace, Synaptica falls back to an agent home workspace under the instance root:
 
 - `~/.paperclip/instances/default/workspaces/<agent-id>`
 
@@ -142,9 +150,9 @@ This path honors `PAPERCLIP_HOME` and `PAPERCLIP_INSTANCE_ID` in non-default set
 
 ## Worktree-local Instances
 
-When developing from multiple git worktrees, do not point two Paperclip servers at the same embedded PostgreSQL data directory.
+When developing from multiple git worktrees, do not point two Synaptica servers at the same embedded PostgreSQL data directory.
 
-Instead, create a repo-local Paperclip config plus an isolated instance for the worktree:
+Instead, create a repo-local Synaptica config plus an isolated instance for the worktree:
 
 ```sh
 paperclipai worktree init
@@ -189,7 +197,7 @@ paperclipai worktree init --from-data-dir ~/.paperclip
 paperclipai worktree init --force
 ```
 
-For project execution worktrees, Paperclip can also run a project-defined provision command after it creates or reuses an isolated git worktree. Configure this on the project's execution workspace policy (`workspaceStrategy.provisionCommand`). The command runs inside the derived worktree and receives `PAPERCLIP_WORKSPACE_*`, `PAPERCLIP_PROJECT_ID`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_ISSUE_*` environment variables so each repo can bootstrap itself however it wants.
+For project execution worktrees, Synaptica can also run a project-defined provision command after it creates or reuses an isolated git worktree. Configure this on the project's execution workspace policy (`workspaceStrategy.provisionCommand`). The command runs inside the derived worktree and receives `PAPERCLIP_WORKSPACE_*`, `PAPERCLIP_PROJECT_ID`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_ISSUE_*` environment variables so each repo can bootstrap itself however it wants.
 
 ## Quick Health Checks
 
@@ -220,7 +228,7 @@ If you set `DATABASE_URL`, the server will use that instead of embedded PostgreS
 
 ## Automatic DB Backups
 
-Paperclip can run automatic DB backups on a timer. Defaults:
+Synaptica can run automatic DB backups on a timer. Defaults:
 
 - enabled
 - every 60 minutes
@@ -292,7 +300,7 @@ Default behavior:
 
 ## CLI Client Operations
 
-Paperclip CLI now includes client-side control-plane commands in addition to setup commands.
+Synaptica CLI now includes client-side control-plane commands in addition to setup commands.
 
 Quick examples:
 
@@ -317,6 +325,63 @@ pnpm paperclipai dashboard get
 
 See full command reference in `doc/CLI.md`.
 
+## How agent skills are loaded
+
+Skills are instructions and resources (each skill = one folder under `skills/` with a `SKILL.md`) that agents use when running. They are **injected automatically** by the adapter when a heartbeat/run starts, or **installed manually** via the CLI.
+
+### 1. Automatic injection (heartbeat runs)
+
+When Synaptica starts an agent run via a **local adapter** (Cursor, Codex, Claude Code, Pi, OpenCode), the adapter:
+
+1. Resolves the repo **skills directory**: `packages/adapters/<adapter>/skills` (published) or repo root **`skills/`** (dev).
+2. For each subfolder (e.g. `paperclip`, `aerovfx-frontend-design`), creates a **symlink** in the agent runtime’s skills directory if it doesn’t already exist.
+3. The agent runtime (Cursor/Codex/Claude/Pi) then discovers and loads those skills from its own config dir; the run’s `cwd` is never modified.
+
+| Adapter        | Skills target (symlink destination)     |
+|----------------|-----------------------------------------|
+| cursor-local   | `~/.cursor/skills/<skill-name>`         |
+| codex-local    | `$CODEX_HOME/skills` (default `~/.codex/skills`) |
+| claude-local   | Temp dir `/.claude/skills/` passed to Claude via `--add-dir` |
+| pi-local       | `~/.pi/agent/skills/<skill-name>`       |
+| opencode-local | `~/.claude/skills/<skill-name>`         |
+
+So **any folder you add under repo `skills/`** (e.g. `skills/my-skill/SKILL.md`) is automatically offered to agents on the next run for that adapter; no server restart needed.
+
+### 2. Manual install (CLI, no heartbeat)
+
+For local use without the server (e.g. “run agent from terminal with Synaptica env”):
+
+```sh
+pnpm paperclipai agent local-cli <agent-id-or-shortname> --company-id <company-id>
+```
+
+This command:
+
+- Creates an API key for the agent (or reuses an existing one).
+- If `--install-skills` is set (default): symlinks repo `skills/` into **Codex** and **Claude** skills dirs (`~/.codex/skills`, `~/.claude/skills`).
+- Prints the `PAPERCLIP_*` env vars to export so you can run the agent in a shell/IDE with Synaptica context.
+
+Use `--no-install-skills` to skip skill install and only get the env vars.
+
+### 3. API (read-only)
+
+The server exposes skills for onboarding/docs, not for “loading” into the agent at runtime:
+
+- `GET /api/skills/index` — list skill ids and display names.
+- `GET /api/skills/:id` — raw markdown of `skills/<id>/SKILL.md` (uses `SKILLS_DIR` or default `skills/`).
+
+Agents that already have skills injected (via §1 or §2) use their **local** skill copy; the API is for invites, onboarding text, or tooling that needs to show skill content.
+
+### Summary
+
+| Cách load skill vào agent | Khi nào dùng |
+|---------------------------|--------------|
+| **Tự động (symlink)**     | Mỗi lần chạy agent qua adapter (heartbeat); adapter symlink `skills/` → thư mục skills của Cursor/Codex/Claude/Pi. |
+| **CLI `agent local-cli`** | Chạy agent tay (terminal/IDE); cần skill cho Codex/Claude thì dùng lệnh này để install skill vào `~/.codex/skills` và `~/.claude/skills`. |
+| **API `/api/skills/:id`** | Chỉ đọc nội dung skill (markdown) cho onboarding/tài liệu; không “cài” skill vào agent. |
+
+Thêm skill mới: tạo thư mục `skills/<tên-skill>/` với `SKILL.md` (frontmatter `name`, `description` + nội dung). Lần chạy agent tiếp theo (hoặc sau `agent local-cli` với `--install-skills`) sẽ có skill đó.
+
 ## OpenClaw Invite Onboarding Endpoints
 
 Agent-oriented invite onboarding now exposes machine-readable API docs:
@@ -325,7 +390,7 @@ Agent-oriented invite onboarding now exposes machine-readable API docs:
 - `GET /api/invites/:token/onboarding` returns onboarding manifest details (registration endpoint, claim endpoint template, skill install hints).
 - `GET /api/invites/:token/onboarding.txt` returns a plain-text onboarding doc intended for both human operators and agents (llm.txt-style handoff), including optional inviter message and suggested network host candidates.
 - `GET /api/skills/index` lists available skill documents.
-- `GET /api/skills/paperclip` returns the Paperclip heartbeat skill markdown.
+- `GET /api/skills/paperclip` returns the Synaptica heartbeat skill markdown.
 
 ## OpenClaw Join Smoke Test
 
@@ -378,6 +443,6 @@ State behavior for this smoke script:
 
 Networking behavior for this smoke script:
 
-- auto-detects and prints a Paperclip host URL reachable from inside OpenClaw Docker
+- auto-detects and prints a Synaptica host URL reachable from inside OpenClaw Docker
 - default container-side host alias is `host.docker.internal` (override with `PAPERCLIP_HOST_FROM_CONTAINER` / `PAPERCLIP_HOST_PORT`)
-- if Paperclip rejects container hostnames in authenticated/private mode, allow `host.docker.internal` via `pnpm paperclipai allowed-hostname host.docker.internal` and restart Paperclip
+- if Synaptica rejects container hostnames in authenticated/private mode, allow `host.docker.internal` via `pnpm paperclipai allowed-hostname host.docker.internal` and restart Synaptica

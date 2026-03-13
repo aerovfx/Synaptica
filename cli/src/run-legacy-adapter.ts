@@ -9,6 +9,7 @@ import { execute as claudeLocalExecute } from "@paperclipai/adapter-claude-local
 import { execute as codexLocalExecute } from "@paperclipai/adapter-codex-local/server";
 import { execute as cursorLocalExecute } from "@paperclipai/adapter-cursor-local/server";
 import { execute as openclawGatewayExecute } from "@paperclipai/adapter-openclaw-gateway/server";
+import { execute as openfangGatewayExecute } from "@paperclipai/adapter-openfang-gateway/server";
 import { execute as opencodeLocalExecute } from "@paperclipai/adapter-opencode-local/server";
 import { execute as piLocalExecute } from "@paperclipai/adapter-pi-local/server";
 import type { AdapterExecutionResult, AdapterExecutionContext } from "@paperclipai/adapter-utils";
@@ -18,6 +19,7 @@ const LEGACY_REGISTRY: Record<string, (ctx: AdapterExecutionContext) => Promise<
   codex_local: codexLocalExecute,
   cursor: cursorLocalExecute,
   openclaw_gateway: openclawGatewayExecute,
+  openfang_gateway: openfangGatewayExecute,
   opencode_local: opencodeLocalExecute,
   pi_local: piLocalExecute,
 };

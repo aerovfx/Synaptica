@@ -177,18 +177,18 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     enabled: !!selectedCompanyId,
   });
 
-  const linkedGoalIds = project.goalIds.length > 0
-    ? project.goalIds
-    : project.goalId
-      ? [project.goalId]
-      : [];
+  const goalIds = project.goalIds ?? [];
+  const goals = project.goals ?? [];
+  const linkedGoalIds =
+    goalIds.length > 0 ? goalIds : project.goalId ? [project.goalId] : [];
 
-  const linkedGoals = project.goals.length > 0
-    ? project.goals
-    : linkedGoalIds.map((id) => ({
-        id,
-        title: allGoals?.find((g) => g.id === id)?.title ?? id.slice(0, 8),
-      }));
+  const linkedGoals =
+    goals.length > 0
+      ? goals
+      : linkedGoalIds.map((id) => ({
+          id,
+          title: allGoals?.find((g) => g.id === id)?.title ?? id.slice(0, 8),
+        }));
 
   const availableGoals = (allGoals ?? []).filter((g) => !linkedGoalIds.includes(g.id));
   const workspaces = project.workspaces ?? [];

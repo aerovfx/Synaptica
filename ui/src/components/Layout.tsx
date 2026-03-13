@@ -48,8 +48,10 @@ export function Layout() {
   const nextTheme = theme === "dark" ? "light" : "dark";
   const matchedCompany = useMemo(() => {
     if (!companyPrefix) return null;
-    const requestedPrefix = companyPrefix.toUpperCase();
-    return companies.find((company) => company.issuePrefix.toUpperCase() === requestedPrefix) ?? null;
+    const requestedPrefix = companyPrefix.trim().toUpperCase();
+    return (
+      companies.find((c) => (c.issuePrefix ?? "").trim().toUpperCase() === requestedPrefix) ?? null
+    );
   }, [companies, companyPrefix]);
   const hasUnknownCompanyPrefix =
     Boolean(companyPrefix) && !companiesLoading && companies.length > 0 && !matchedCompany;

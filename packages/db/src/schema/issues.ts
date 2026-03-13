@@ -6,6 +6,7 @@ import {
   timestamp,
   integer,
   jsonb,
+  real,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -14,6 +15,9 @@ import { projects } from "./projects.js";
 import { goals } from "./goals.js";
 import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
+import { boards } from "./boards.js";
+import { boardColumns } from "./board_columns.js";
+import { sprints } from "./sprints.js";
 
 export const issues = pgTable(
   "issues",
@@ -45,6 +49,10 @@ export const issues = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+    boardId: uuid("board_id").references(() => boards.id, { onDelete: "set null" }),
+    boardColumnId: uuid("board_column_id").references(() => boardColumns.id, { onDelete: "set null" }),
+    sprintId: uuid("sprint_id").references(() => sprints.id, { onDelete: "set null" }),
+    position: real("position"), // fractional order in column (Trello-style)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -62,6 +70,9 @@ export const issues = pgTable(
     ),
     parentIdx: index("issues_company_parent_idx").on(table.companyId, table.parentId),
     projectIdx: index("issues_company_project_idx").on(table.companyId, table.projectId),
+    boardIdx: index("issues_board_idx").on(table.boardId),
+    boardColumnIdx: index("issues_board_column_idx").on(table.boardColumnId),
+    sprintIdx: index("issues_sprint_idx").on(table.sprintId),
     identifierIdx: uniqueIndex("issues_identifier_idx").on(table.identifier),
   }),
 );

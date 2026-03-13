@@ -12,6 +12,8 @@ import { Agents } from "./pages/Agents";
 import { AgentDetail } from "./pages/AgentDetail";
 import { Projects } from "./pages/Projects";
 import { ProjectDetail } from "./pages/ProjectDetail";
+import { Boards } from "./pages/Boards";
+import { BoardKanban } from "./pages/BoardKanban";
 import { Issues } from "./pages/Issues";
 import { IssueDetail } from "./pages/IssueDetail";
 import { Goals } from "./pages/Goals";
@@ -23,7 +25,13 @@ import { Activity } from "./pages/Activity";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { DesignGuide } from "./pages/DesignGuide";
+import { Dms } from "./pages/Dms";
+import { DmsDocumentDetail } from "./pages/DmsDocumentDetail";
 import { OrgChart } from "./pages/OrgChart";
+import { Spaces } from "./pages/Spaces";
+import { Departments } from "./pages/Departments";
+import { Classes } from "./pages/Classes";
+import { Social } from "./pages/Social";
 import { NewAgent } from "./pages/NewAgent";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
@@ -40,8 +48,8 @@ function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: b
         <h1 className="text-xl font-semibold">Instance setup required</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {hasActiveInvite
-            ? "No instance admin exists yet. A bootstrap invite is already active. Check your Paperclip startup logs for the first admin invite URL, or run this command to rotate it:"
-            : "No instance admin exists yet. Run this command in your Paperclip environment to generate the first admin invite URL:"}
+            ? "No instance admin exists yet. A bootstrap invite is already active. Check your Synaptica startup logs for the first admin invite URL, or run this command to rotate it:"
+            : "No instance admin exists yet. Run this command in your Synaptica environment to generate the first admin invite URL:"}
         </p>
         <pre className="mt-4 overflow-x-auto rounded-md border border-border bg-muted/30 p-3 text-xs">
 {`pnpm paperclipai auth bootstrap-ceo`}
@@ -119,6 +127,8 @@ function boardRoutes() {
       <Route path="agents/:agentId/runs/:runId" element={<AgentDetail />} />
       <Route path="projects" element={<Projects />} />
       <Route path="projects/:projectId" element={<ProjectDetail />} />
+      <Route path="boards" element={<Boards />} />
+      <Route path="boards/:boardId" element={<BoardKanban />} />
       <Route path="projects/:projectId/overview" element={<ProjectDetail />} />
       <Route path="projects/:projectId/issues" element={<ProjectDetail />} />
       <Route path="projects/:projectId/issues/:filter" element={<ProjectDetail />} />
@@ -141,6 +151,13 @@ function boardRoutes() {
       <Route path="inbox" element={<Navigate to="/inbox/new" replace />} />
       <Route path="inbox/new" element={<Inbox />} />
       <Route path="inbox/all" element={<Inbox />} />
+      <Route path="dms" element={<Dms />} />
+      <Route path="dms/incoming/:documentId" element={<DmsDocumentDetail kind="incoming" />} />
+      <Route path="dms/outgoing/:documentId" element={<DmsDocumentDetail kind="outgoing" />} />
+      <Route path="spaces" element={<Spaces />} />
+      <Route path="departments" element={<Departments />} />
+      <Route path="classes" element={<Classes />} />
+      <Route path="social" element={<Social />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="*" element={<NotFoundPage scope="board" />} />
     </>
@@ -226,6 +243,11 @@ export function App() {
         <Route element={<CloudAccessGate />}>
           <Route index element={<CompanyRootRedirect />} />
           <Route path="companies" element={<UnprefixedBoardRedirect />} />
+          <Route path="dms" element={<UnprefixedBoardRedirect />} />
+          <Route path="spaces" element={<UnprefixedBoardRedirect />} />
+          <Route path="departments" element={<UnprefixedBoardRedirect />} />
+          <Route path="classes" element={<UnprefixedBoardRedirect />} />
+          <Route path="social" element={<UnprefixedBoardRedirect />} />
           <Route path="issues" element={<UnprefixedBoardRedirect />} />
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />
           <Route path="agents" element={<UnprefixedBoardRedirect />} />
@@ -233,8 +255,10 @@ export function App() {
           <Route path="agents/:agentId" element={<UnprefixedBoardRedirect />} />
           <Route path="agents/:agentId/:tab" element={<UnprefixedBoardRedirect />} />
           <Route path="agents/:agentId/runs/:runId" element={<UnprefixedBoardRedirect />} />
-          <Route path="projects" element={<UnprefixedBoardRedirect />} />
-          <Route path="projects/:projectId" element={<UnprefixedBoardRedirect />} />
+<Route path="projects" element={<UnprefixedBoardRedirect />} />
+      <Route path="projects/:projectId" element={<UnprefixedBoardRedirect />} />
+      <Route path="boards" element={<UnprefixedBoardRedirect />} />
+      <Route path="boards/:boardId" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/overview" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />

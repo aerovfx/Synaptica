@@ -11,6 +11,11 @@ export type {
 } from "./agent.js";
 export type { AssetImage } from "./asset.js";
 export type { Project, ProjectGoalRef, ProjectWorkspace } from "./project.js";
+export type { Board, BoardColumn, Sprint } from "./board.js";
+export type { CompanySpace } from "./company-space.js";
+export type { CompanyDepartment } from "./company-department.js";
+export type { CompanyPost } from "./company-post.js";
+export type { CompanyClass } from "./company-class.js";
 export type {
   WorkspaceRuntimeService,
   ExecutionWorkspaceStrategyType,

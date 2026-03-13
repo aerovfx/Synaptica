@@ -6,13 +6,17 @@ import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check } from "lucide-react";
+import { Settings, Check, Moon, Sun, Palette } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
   ToggleField,
   HintIcon
 } from "../components/agent-config-primitives";
+import { useTheme } from "../context/ThemeContext";
+import { useUiPreset, type UiPreset } from "../context/UiPresetContext";
+import type { UiTemplate } from "../config/sidebarTemplates";
+import { cn } from "@/lib/utils";
 
 type AgentSnippetInput = {
   onboardingTextUrl: string;
@@ -29,11 +33,14 @@ export function CompanySettings() {
   } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
+  const { theme, setTheme } = useTheme();
+  const { preset, setPreset } = useUiPreset();
 
   // General settings local state
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
   const [brandColor, setBrandColor] = useState("");
+  const [uiTemplateLocal, setUiTemplateLocal] = useState<UiTemplate>("company");
 
   // Sync local state from selected company
   useEffect(() => {
@@ -41,6 +48,10 @@ export function CompanySettings() {
     setCompanyName(selectedCompany.name);
     setDescription(selectedCompany.description ?? "");
     setBrandColor(selectedCompany.brandColor ?? "");
+    const t = selectedCompany.uiTemplate;
+    setUiTemplateLocal(
+      t === "school" || t === "hospital" ? t : "company"
+    );
   }, [selectedCompany]);
 
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -269,6 +280,114 @@ export function CompanySettings() {
         </div>
       </div>
 
+      {/* Chế độ giao diện (read-only: đặt theo ngành nghề khi tạo công ty) */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Chế độ giao diện
+        </div>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <p className="text-sm text-muted-foreground">
+            Mẫu giao diện (sidebar, menu) được đặt theo ngành nghề khi tạo công ty để tránh xung đột hệ thống. Nếu bạn chọn &quot;Giáo dục / Giáo viên&quot; thì dùng mẫu School; các trường hợp khác dùng mẫu Company.
+          </p>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Mẫu hiện tại:</span>
+            <span
+              className={cn(
+                "rounded-md border px-3 py-1.5 text-sm",
+                "border-border bg-muted/50 text-muted-foreground"
+              )}
+            >
+              {uiTemplateLocal === "school"
+                ? "School"
+                : uiTemplateLocal === "hospital"
+                  ? "Hospital (đang cập nhật)"
+                  : "Company"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Mẫu giao diện / UI theme */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Mẫu giao diện
+        </div>
+        <div className="space-y-4 rounded-md border border-border px-4 py-4">
+          <div>
+            <div className="text-sm font-medium mb-2">Giao diện sáng / tối</div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTheme("dark")}
+                className={cn(
+                  "flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+                  theme === "dark"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-transparent text-muted-foreground hover:bg-muted/50"
+                )}
+              >
+                <Moon className="h-4 w-4" />
+                Tối
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme("light")}
+                className={cn(
+                  "flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+                  theme === "light"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-transparent text-muted-foreground hover:bg-muted/50"
+                )}
+              >
+                <Sun className="h-4 w-4" />
+                Sáng
+              </button>
+            </div>
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-2 flex items-center gap-1.5">
+              <Palette className="h-4 w-4" />
+              Mẫu màu nhấn
+            </div>
+            <p className="text-xs text-muted-foreground mb-2">
+              Mặc định · Cơ bản · Trend 2026: Lavender, Teal, Coral, Sage, Mint
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { id: "default" as UiPreset, label: "Mặc định", color: "oklch(0.5 0 0)" },
+                  { id: "blue" as UiPreset, label: "Xanh dương", color: "oklch(0.55 0.25 264)" },
+                  { id: "green" as UiPreset, label: "Xanh lá", color: "oklch(0.6 0.18 162)" },
+                  { id: "lavender" as UiPreset, label: "Lavender", color: "oklch(0.7 0.14 300)" },
+                  { id: "teal" as UiPreset, label: "Teal", color: "oklch(0.55 0.14 195)" },
+                  { id: "coral" as UiPreset, label: "Coral", color: "oklch(0.7 0.18 25)" },
+                  { id: "sage" as UiPreset, label: "Sage", color: "oklch(0.7 0.11 130)" },
+                  { id: "mint" as UiPreset, label: "Mint", color: "oklch(0.75 0.1 166)" },
+                ] as const
+              ).map(({ id, label, color }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setPreset(id)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+                    preset === id
+                      ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/30"
+                      : "border-border bg-transparent text-muted-foreground hover:bg-muted/50"
+                  )}
+                >
+                  <span
+                    className="h-4 w-4 rounded-full border border-border shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Save button for General + Appearance */}
       {generalDirty && (
         <div className="flex items-center gap-2">
@@ -446,35 +565,35 @@ function buildAgentSnippet(input: AgentSnippetInput) {
 
   const connectivityBlock =
     candidateUrls.length === 0
-      ? `No candidate URLs are available. Ask your user to configure a reachable hostname in Paperclip, then retry.
+      ? `No candidate URLs are available. Ask your user to configure a reachable hostname in Synaptica, then retry.
 Suggested steps:
-- choose a hostname that resolves to the Paperclip host from your runtime
+- choose a hostname that resolves to the Synaptica host from your runtime
 - run: pnpm paperclipai allowed-hostname <host>
-- restart Paperclip
+- restart Synaptica
 - verify with: curl -fsS http://<host>:3100/api/health
 - regenerate this invite snippet`
-      : `If none are reachable, ask your user to add a reachable hostname in Paperclip, restart, and retry.
+      : `If none are reachable, ask your user to add a reachable hostname in Synaptica, restart, and retry.
 Suggested command:
 - pnpm paperclipai allowed-hostname <host>
 Then verify with: curl -fsS <base-url>/api/health`;
 
   const resolutionLine = resolutionTestUrl
-    ? `\nYou MUST test Paperclip-to-gateway reachability, call: ${resolutionTestUrl}?url=<urlencoded-gateway-url> (using the hostname that worked above). Do not assume your 172.x is necessarily reachable from Paperclip. Test it. `
+    ? `\nYou MUST test Synaptica-to-gateway reachability, call: ${resolutionTestUrl}?url=<urlencoded-gateway-url> (using the hostname that worked above). Do not assume your 172.x is necessarily reachable from Synaptica. Test it. `
     : "";
 
-  return `You're invited to join a Paperclip organization.
+  return `You're invited to join a Synaptica organization.
 
 The URLs you should try are:
 ${candidateList}
 
 Connectivity guidance:
-If you are running on a different machine than Paperclip, Paperclip must be reachable at one of the hostnames used above.
+If you are running on a different machine than Synaptica, Synaptica must be reachable at one of the hostnames used above.
 Verify the hostname works from your runtime with: GET <base-url>/api/health
 
 ${connectivityBlock}
 
 For your "agentName", just use your own agent name (OpenClaw or whatever your name is) and send it directly.
-You also need to send a gateway URL that Paperclip can access. Check your config and include that URL.${resolutionLine}
+You also need to send a gateway URL that Synaptica can access. Check your config and include that URL.${resolutionLine}
 
 ---
 
@@ -484,14 +603,14 @@ When you submit the join request, use:
 - \`agentDefaultsPayload.url\` as your \`ws://\` or \`wss://\` gateway URL
 - \`agentDefaultsPayload.headers["x-openclaw-token"]\` with your gateway token
 - (legacy accepted) \`agentDefaultsPayload.headers["x-openclaw-auth"]\`
-- Keep device auth enabled (recommended). If \`devicePrivateKeyPem\` is omitted, Paperclip will generate and persist one during join so pairing approvals remain stable.
+- Keep device auth enabled (recommended). If \`devicePrivateKeyPem\` is omitted, Synaptica will generate and persist one during join so pairing approvals remain stable.
 - Only use \`disableDeviceAuth=true\` for special environments where pairing cannot be completed.
 
 Do NOT use \`/v1/responses\` or \`/hooks/*\` in this join flow.
 
 Before you do anything, please respond to your user that you understand the instructions and you're going to work on them. Then do the step above in another session called "paperclip-onboarding" and then tell your user when you're done. Update your user in intermediate steps along the way so they know what's going on.
 
-Then after you've connected to Paperclip (exchanged keys etc.) you MUST review and follow the onboarding instructions in onboarding.txt they give you.
+Then after you've connected to Synaptica (exchanged keys etc.) you MUST review and follow the onboarding instructions in onboarding.txt they give you.
 
 `;
 }

@@ -43,6 +43,10 @@ pub struct UpdateIssueBody {
     pub project_id: Option<String>,
     pub goal_id: Option<String>,
     pub assignee_agent_id: Option<String>,
+    pub board_id: Option<String>,
+    pub board_column_id: Option<String>,
+    pub sprint_id: Option<String>,
+    pub position: Option<f32>,
 }
 
 /// GET /api/companies/:companyId/issues
@@ -52,7 +56,7 @@ pub async fn list_issues(
 ) -> Result<Json<Vec<Issue>>, (StatusCode, String)> {
     let company_id = Uuid::parse_str(&params.company_id)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
-    let full_query = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at FROM issues WHERE company_id = $1 ORDER BY created_at";
+    let full_query = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, board_id, board_column_id, sprint_id, position, created_at, updated_at FROM issues WHERE company_id = $1 ORDER BY created_at";
     match sqlx::query_as::<_, Issue>(full_query)
         .bind(company_id)
         .fetch_all(&pool)
@@ -63,7 +67,7 @@ pub async fn list_issues(
             let err_str = e.to_string();
             if err_str.contains("does not exist") || err_str.contains("column") {
                 tracing::warn!("GET /api/companies/:company_id/issues full query failed (schema?), trying fallback: {}", e);
-                let fallback = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, NULL::jsonb AS assignee_adapter_overrides, NULL::jsonb AS execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at FROM issues WHERE company_id = $1 ORDER BY created_at";
+                let fallback = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, NULL::jsonb AS assignee_adapter_overrides, NULL::jsonb AS execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, NULL::uuid AS board_id, NULL::uuid AS board_column_id, NULL::uuid AS sprint_id, NULL::real AS position, created_at, updated_at FROM issues WHERE company_id = $1 ORDER BY created_at";
                 let rows = sqlx::query_as::<_, Issue>(fallback)
                     .bind(company_id)
                     .fetch_all(&pool)
@@ -88,7 +92,7 @@ pub async fn get_issue(
     let id = Uuid::parse_str(&params.id)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid issue id".to_string()))?;
     let row = sqlx::query_as::<_, Issue>(
-        "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at FROM issues WHERE id = $1",
+        "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, board_id, board_column_id, sprint_id, position, created_at, updated_at FROM issues WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&pool)
@@ -174,7 +178,7 @@ pub async fn create_issue(
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
 
     let insert_only = "INSERT INTO issues (id, company_id, project_id, goal_id, parent_id, title, description, status, priority, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)";
-    let full_returning = "INSERT INTO issues (id, company_id, project_id, goal_id, parent_id, title, description, status, priority, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at";
+    let full_returning = "INSERT INTO issues (id, company_id, project_id, goal_id, parent_id, title, description, status, priority, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, board_id, board_column_id, sprint_id, position, created_at, updated_at";
 
     let row = match sqlx::query_as::<_, Issue>(full_returning)
         .bind(id)
@@ -213,7 +217,7 @@ pub async fn create_issue(
                         (StatusCode::INTERNAL_SERVER_ERROR, e2.to_string())
                     })?;
                 // Minimal fallback: only columns from base migration (0000), NULL for later columns
-                let fallback = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, NULL::text AS assignee_user_id, NULL::uuid AS checkout_run_id, NULL::uuid AS execution_run_id, NULL::text AS execution_agent_name_key, NULL::timestamptz AS execution_locked_at, created_by_agent_id, created_by_user_id, NULL::int AS issue_number, NULL::text AS identifier, request_depth, billing_code, NULL::jsonb AS assignee_adapter_overrides, NULL::jsonb AS execution_workspace_settings, started_at, completed_at, cancelled_at, NULL::timestamptz AS hidden_at, created_at, updated_at FROM issues WHERE id = $1";
+                let fallback = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, NULL::text AS assignee_user_id, NULL::uuid AS checkout_run_id, NULL::uuid AS execution_run_id, NULL::text AS execution_agent_name_key, NULL::timestamptz AS execution_locked_at, created_by_agent_id, created_by_user_id, NULL::int AS issue_number, NULL::text AS identifier, request_depth, billing_code, NULL::jsonb AS assignee_adapter_overrides, NULL::jsonb AS execution_workspace_settings, started_at, completed_at, cancelled_at, NULL::timestamptz AS hidden_at, NULL::uuid AS board_id, NULL::uuid AS board_column_id, NULL::uuid AS sprint_id, NULL::real AS position, created_at, updated_at FROM issues WHERE id = $1";
                 sqlx::query_as::<_, Issue>(fallback)
                     .bind(id)
                     .fetch_one(&pool)
@@ -257,7 +261,7 @@ pub async fn checkout_issue(
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "assignee_agent_id or X-Agent-Id required".to_string()))?;
     let now = chrono::Utc::now();
     let row = sqlx::query_as::<_, Issue>(
-        "UPDATE issues SET assignee_agent_id = $2, status = 'in_progress', started_at = COALESCE(started_at, $3), updated_at = $3 WHERE id = $1 AND (assignee_agent_id IS NULL OR assignee_agent_id = $2) RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at",
+        "UPDATE issues SET assignee_agent_id = $2, status = 'in_progress', started_at = COALESCE(started_at, $3), updated_at = $3 WHERE id = $1 AND (assignee_agent_id IS NULL OR assignee_agent_id = $2) RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, board_id, board_column_id, sprint_id, position, created_at, updated_at",
     )
     .bind(&params.id)
     .bind(assignee_agent_id)
@@ -276,7 +280,7 @@ pub async fn release_issue(
 ) -> Result<Json<Issue>, (StatusCode, String)> {
     let now = chrono::Utc::now();
     let row = sqlx::query_as::<_, Issue>(
-        "UPDATE issues SET assignee_agent_id = NULL, assignee_user_id = NULL, status = 'backlog', started_at = NULL, execution_locked_at = NULL, updated_at = $2 WHERE id = $1 RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at",
+        "UPDATE issues SET assignee_agent_id = NULL, assignee_user_id = NULL, status = 'backlog', started_at = NULL, execution_locked_at = NULL, updated_at = $2 WHERE id = $1 RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, board_id, board_column_id, sprint_id, position, created_at, updated_at",
     )
     .bind(&params.id)
     .bind(now)
@@ -518,10 +522,14 @@ pub async fn update_issue(
     let project_id: Option<Uuid> = body.project_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
     let goal_id: Option<Uuid> = body.goal_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
     let assignee_agent_id: Option<Uuid> = body.assignee_agent_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
+    let board_id: Option<Uuid> = body.board_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
+    let board_column_id: Option<Uuid> = body.board_column_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
+    let sprint_id: Option<Uuid> = body.sprint_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
+    let id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid issue id".to_string()))?;
     let row = sqlx::query_as::<_, Issue>(
-        "UPDATE issues SET title = COALESCE($2, title), description = COALESCE($3, description), status = COALESCE($4, status), priority = COALESCE($5, priority), project_id = COALESCE($6, project_id), goal_id = COALESCE($7, goal_id), assignee_agent_id = COALESCE($8, assignee_agent_id), updated_at = $9 WHERE id = $1 RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at",
+        "UPDATE issues SET title = COALESCE($2, title), description = COALESCE($3, description), status = COALESCE($4, status), priority = COALESCE($5, priority), project_id = COALESCE($6, project_id), goal_id = COALESCE($7, goal_id), assignee_agent_id = COALESCE($8, assignee_agent_id), board_id = COALESCE($9, board_id), board_column_id = COALESCE($10, board_column_id), sprint_id = COALESCE($11, sprint_id), position = COALESCE($12, position), updated_at = $13 WHERE id = $1 RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, board_id, board_column_id, sprint_id, position, created_at, updated_at",
     )
-    .bind(&params.id)
+    .bind(id)
     .bind(body.title.as_deref())
     .bind(body.description.as_deref())
     .bind(body.status.as_deref())
@@ -529,6 +537,10 @@ pub async fn update_issue(
     .bind(project_id)
     .bind(goal_id)
     .bind(assignee_agent_id)
+    .bind(board_id)
+    .bind(board_column_id)
+    .bind(sprint_id)
+    .bind(body.position)
     .bind(now)
     .fetch_optional(&pool)
     .await

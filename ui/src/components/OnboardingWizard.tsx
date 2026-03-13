@@ -56,9 +56,10 @@ type AdapterType =
   | "cursor"
   | "process"
   | "http"
-  | "openclaw_gateway";
+  | "openclaw_gateway"
+  | "openfang_gateway";
 
-const DEFAULT_TASK_DESCRIPTION = `Setup yourself as the CEO. Use the ceo persona found here: [https://github.com/paperclipai/companies/blob/main/default/ceo/AGENTS.md](https://github.com/paperclipai/companies/blob/main/default/ceo/AGENTS.md)
+const DEFAULT_TASK_DESCRIPTION = `Setup yourself as the CEO. Use the ceo persona found here: [https://github.com/Synaptica/agents/ceo/AGENTS.md](https://github.com/Synaptica/agents/ceo/AGENTS.md)
 
 Ensure you have a folder agents/ceo and then download this AGENTS.md as well as the sibling HEARTBEAT.md, SOUL.md, and TOOLS.md. and set that AGENTS.md as the path to your agents instruction file
 
@@ -82,6 +83,8 @@ export function OnboardingWizard() {
   // Step 1
   const [companyName, setCompanyName] = useState("");
   const [companyGoal, setCompanyGoal] = useState("");
+  /** Used to set ui_template: "school" for teacher, "company" otherwise. */
+  const [occupation, setOccupation] = useState<"teacher" | "other">("other");
 
   // Step 2
   const [agentName, setAgentName] = useState("CEO");
@@ -234,6 +237,7 @@ export function OnboardingWizard() {
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
+    setOccupation("other");
     setAgentName("CEO");
     setAdapterType("claude_local");
     setCwd("");
@@ -270,7 +274,7 @@ export function OnboardingWizard() {
           ? model || DEFAULT_CODEX_LOCAL_MODEL
           : adapterType === "cursor"
             ? model || DEFAULT_CURSOR_LOCAL_MODEL
-          : model,
+            : model,
       command,
       args,
       url,
@@ -283,8 +287,8 @@ export function OnboardingWizard() {
     if (adapterType === "claude_local" && forceUnsetAnthropicApiKey) {
       const env =
         typeof config.env === "object" &&
-        config.env !== null &&
-        !Array.isArray(config.env)
+          config.env !== null &&
+          !Array.isArray(config.env)
           ? { ...(config.env as Record<string, unknown>) }
           : {};
       env.ANTHROPIC_API_KEY = { type: "plain", value: "" };
@@ -332,6 +336,11 @@ export function OnboardingWizard() {
       setCreatedCompanyId(company.id);
       setCreatedCompanyPrefix(company.issuePrefix);
       setSelectedCompanyId(company.id);
+      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+
+      // Set UI template from occupation to avoid conflict: teacher → school, else company.
+      const uiTemplate = occupation === "teacher" ? "school" : "company";
+      await companiesApi.update(company.id, { uiTemplate });
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
 
       if (companyGoal.trim()) {
@@ -430,8 +439,8 @@ export function OnboardingWizard() {
       const config = buildAdapterConfig();
       const env =
         typeof config.env === "object" &&
-        config.env !== null &&
-        !Array.isArray(config.env)
+          config.env !== null &&
+          !Array.isArray(config.env)
           ? { ...(config.env as Record<string, unknown>) }
           : {};
       env.ANTHROPIC_API_KEY = { type: "plain", value: "" };
@@ -605,6 +614,40 @@ export function OnboardingWizard() {
                       onChange={(e) => setCompanyGoal(e.target.value)}
                     />
                   </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-2 block">
+                      Bạn hoạt động trong lĩnh vực nào?
+                    </label>
+                    <p className="text-xs text-muted-foreground/80 mb-2">
+                      Hệ thống sẽ chọn mẫu giao diện phù hợp (sidebar, menu) theo ngành nghề để tránh xung đột.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOccupation("other")}
+                        className={cn(
+                          "rounded-md border px-3 py-2 text-sm transition-colors",
+                          occupation === "other"
+                            ? "border-foreground bg-accent text-foreground"
+                            : "border-border bg-transparent text-muted-foreground hover:bg-muted/50"
+                        )}
+                      >
+                        Doanh nghiệp / Khác
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOccupation("teacher")}
+                        className={cn(
+                          "rounded-md border px-3 py-2 text-sm transition-colors",
+                          occupation === "teacher"
+                            ? "border-foreground bg-accent text-foreground"
+                            : "border-border bg-transparent text-muted-foreground hover:bg-muted/50"
+                        )}
+                      >
+                        Giáo dục / Giáo viên
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -676,6 +719,12 @@ export function OnboardingWizard() {
                           disabledLabel: "Configure OpenClaw within the App"
                         },
                         {
+                          value: "openfang_gateway" as const,
+                          label: "OpenFang Gateway",
+                          icon: Bot,
+                          desc: "OpenFang Agent OS — multi-provider (Gemini, Grok, GPT, …)"
+                        },
+                        {
                           value: "cursor" as const,
                           label: "Cursor",
                           icon: MousePointer2,
@@ -721,7 +770,7 @@ export function OnboardingWizard() {
                           <span className="text-muted-foreground text-[10px]">
                             {opt.comingSoon
                               ? (opt as { disabledLabel?: string }).disabledLabel ??
-                                "Coming soon"
+                              "Coming soon"
                               : opt.desc}
                           </span>
                         </button>
@@ -735,116 +784,116 @@ export function OnboardingWizard() {
                     adapterType === "opencode_local" ||
                     adapterType === "pi_local" ||
                     adapterType === "cursor") && (
-                    <div className="space-y-3">
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-muted-foreground">
-                            Working directory
+                      <div className="space-y-3">
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <label className="text-xs text-muted-foreground">
+                              Working directory
+                            </label>
+                            <HintIcon text="Synaptica works best if you create a new folder for your agents to keep their memories and stay organized. Create a new folder and put the path here." />
+                          </div>
+                          <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
+                            <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <input
+                              className="w-full bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/50"
+                              placeholder="/path/to/project"
+                              value={cwd}
+                              onChange={(e) => setCwd(e.target.value)}
+                            />
+                            <ChoosePathButton />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            Model
                           </label>
-                          <HintIcon text="Paperclip works best if you create a new folder for your agents to keep their memories and stay organized. Create a new folder and put the path here." />
-                        </div>
-                        <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                          <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <input
-                            className="w-full bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/50"
-                            placeholder="/path/to/project"
-                            value={cwd}
-                            onChange={(e) => setCwd(e.target.value)}
-                          />
-                          <ChoosePathButton />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
-                          Model
-                        </label>
-                        <Popover
-                          open={modelOpen}
-                          onOpenChange={(next) => {
-                            setModelOpen(next);
-                            if (!next) setModelSearch("");
-                          }}
-                        >
-                          <PopoverTrigger asChild>
-                            <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
-                              <span
-                                className={cn(
-                                  !model && "text-muted-foreground"
-                                )}
-                              >
-                                {selectedModel
-                                  ? selectedModel.label
-                                  : model ||
+                          <Popover
+                            open={modelOpen}
+                            onOpenChange={(next) => {
+                              setModelOpen(next);
+                              if (!next) setModelSearch("");
+                            }}
+                          >
+                            <PopoverTrigger asChild>
+                              <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
+                                <span
+                                  className={cn(
+                                    !model && "text-muted-foreground"
+                                  )}
+                                >
+                                  {selectedModel
+                                    ? selectedModel.label
+                                    : model ||
                                     (adapterType === "opencode_local"
                                       ? "Select model (required)"
                                       : "Default")}
-                              </span>
-                              <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-[var(--radix-popover-trigger-width)] p-1"
-                            align="start"
-                          >
-                            <input
-                              className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
-                              placeholder="Search models..."
-                              value={modelSearch}
-                              onChange={(e) => setModelSearch(e.target.value)}
-                              autoFocus
-                            />
-                            {adapterType !== "opencode_local" && (
-                              <button
-                                className={cn(
-                                  "flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
-                                  !model && "bg-accent"
-                                )}
-                                onClick={() => {
-                                  setModel("");
-                                  setModelOpen(false);
-                                }}
-                              >
+                                </span>
+                                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              className="w-[var(--radix-popover-trigger-width)] p-1"
+                              align="start"
+                            >
+                              <input
+                                className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
+                                placeholder="Search models..."
+                                value={modelSearch}
+                                onChange={(e) => setModelSearch(e.target.value)}
+                                autoFocus
+                              />
+                              {adapterType !== "opencode_local" && (
+                                <button
+                                  className={cn(
+                                    "flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
+                                    !model && "bg-accent"
+                                  )}
+                                  onClick={() => {
+                                    setModel("");
+                                    setModelOpen(false);
+                                  }}
+                                >
                                   Default
                                 </button>
-                            )}
-                            <div className="max-h-[240px] overflow-y-auto">
-                              {groupedModels.map((group) => (
-                                <div key={group.provider} className="mb-1 last:mb-0">
-                                  {adapterType === "opencode_local" && (
-                                    <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                                      {group.provider} ({group.entries.length})
-                                    </div>
-                                  )}
-                                  {group.entries.map((m) => (
-                                    <button
-                                      key={m.id}
-                                      className={cn(
-                                        "flex items-center w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
-                                        m.id === model && "bg-accent"
-                                      )}
-                                      onClick={() => {
-                                        setModel(m.id);
-                                        setModelOpen(false);
-                                      }}
-                                    >
-                                      <span className="block w-full text-left truncate" title={m.id}>
-                                        {adapterType === "opencode_local" ? extractModelName(m.id) : m.label}
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
-                            {filteredModels.length === 0 && (
-                              <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                                No models discovered.
-                              </p>
-                            )}
-                          </PopoverContent>
-                        </Popover>
+                              )}
+                              <div className="max-h-[240px] overflow-y-auto">
+                                {groupedModels.map((group) => (
+                                  <div key={group.provider} className="mb-1 last:mb-0">
+                                    {adapterType === "opencode_local" && (
+                                      <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                        {group.provider} ({group.entries.length})
+                                      </div>
+                                    )}
+                                    {group.entries.map((m) => (
+                                      <button
+                                        key={m.id}
+                                        className={cn(
+                                          "flex items-center w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
+                                          m.id === model && "bg-accent"
+                                        )}
+                                        onClick={() => {
+                                          setModel(m.id);
+                                          setModelOpen(false);
+                                        }}
+                                      >
+                                        <span className="block w-full text-left truncate" title={m.id}>
+                                          {adapterType === "opencode_local" ? extractModelName(m.id) : m.label}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                              {filteredModels.length === 0 && (
+                                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                                  No models discovered.
+                                </p>
+                              )}
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
                   {isLocalAdapter && (
                     <div className="space-y-2 rounded-md border border-border p-3">
@@ -903,10 +952,10 @@ export function OnboardingWizard() {
                           {adapterType === "cursor"
                             ? `${effectiveAdapterCommand} -p --mode ask --output-format json \"Respond with hello.\"`
                             : adapterType === "codex_local"
-                            ? `${effectiveAdapterCommand} exec --json -`
-                            : adapterType === "opencode_local"
-                              ? `${effectiveAdapterCommand} run --format json "Respond with hello."`
-                            : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
+                              ? `${effectiveAdapterCommand} exec --json -`
+                              : adapterType === "opencode_local"
+                                ? `${effectiveAdapterCommand} run --format json "Respond with hello."`
+                                : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
                         </p>
                         <p className="text-muted-foreground">
                           Prompt:{" "}

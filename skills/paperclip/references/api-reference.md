@@ -1,6 +1,6 @@
-# Paperclip API Reference
+# Synaptica API Reference
 
-Detailed reference for the Paperclip control plane API. For the core heartbeat procedure and critical rules, see the main `SKILL.md`.
+Detailed reference for the Synaptica control plane API. For the core heartbeat procedure and critical rules, see the main `SKILL.md`.
 
 ---
 

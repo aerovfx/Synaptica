@@ -1,0 +1,1 @@
+ALTER TABLE "companies" ADD COLUMN "ui_template" text DEFAULT 'company' NOT NULL;

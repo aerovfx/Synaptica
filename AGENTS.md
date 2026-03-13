@@ -4,7 +4,7 @@ Guidance for human and AI contributors working in this repository.
 
 ## 1. Purpose
 
-Paperclip is a control plane for AI-agent companies.
+Synaptica is a control plane for AI-agent companies.
 The current implementation target is V1 and is defined in `doc/SPEC-implementation.md`.
 
 ## 2. Read This First
@@ -27,6 +27,9 @@ Before making changes, read in this order:
 - `packages/db/`: Drizzle schema, migrations, DB clients
 - `packages/shared/`: shared types, constants, validators, API path constants
 - `doc/`: operational and product docs
+- `skills/`: Agent skills (injected into Cursor/Codex/Claude/Pi when running via adapters). Includes:
+  - Skills: `paperclip`, `paperclip-create-agent`, `create-agent-adapter`, `release`, `release-changelog`, `pr-report`, `para-memory-files`
+  - Skills from [aerovfx/skills](https://github.com/aerovfx/skills) (prefix `aerovfx-`): algorithmic-art, brand-guidelines, canvas-design, claude-api, doc-coauthoring, docx, frontend-design, internal-comms, mcp-builder, pdf, pptx, skill-creator, slack-gif-creator, theme-factory, web-artifacts-builder, webapp-testing, xlsx. To refresh: clone that repo and copy `skills/*` into `skills/aerovfx-<name>`.
 
 ## 4. Dev Setup
 
@@ -110,7 +113,7 @@ If anything cannot be run, explicitly report what was not run and why.
 - Base path: `/api`
 - Board access is treated as full-control operator context
 - Agent access uses bearer API keys (`agent_api_keys`), hashed at rest
-- Agent keys must not access other companies
+- Agent keys must not access other companies (enforced by middleware for `/api/companies/:company_id/*`; see `doc/SECURITY.md`)
 
 When adding endpoints:
 

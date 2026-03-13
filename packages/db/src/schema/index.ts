@@ -1,4 +1,13 @@
 export { companies } from "./companies.js";
+export { companySpaces } from "./company_spaces.js";
+export { companyDepartments } from "./company_departments.js";
+export { companyPosts } from "./company_posts.js";
+export { companyClasses } from "./company_classes.js";
+export {
+  companyDmsDocuments,
+  companyDmsIncoming,
+  companyDmsOutgoing,
+} from "./company_dms.js";
 export { authUsers, authSessions, authAccounts, authVerifications } from "./auth.js";
 export { instanceUserRoles } from "./instance_user_roles.js";
 export { agents } from "./agents.js";
@@ -12,6 +21,9 @@ export { agentRuntimeState } from "./agent_runtime_state.js";
 export { agentTaskSessions } from "./agent_task_sessions.js";
 export { agentWakeupRequests } from "./agent_wakeup_requests.js";
 export { projects } from "./projects.js";
+export { boards } from "./boards.js";
+export { boardColumns } from "./board_columns.js";
+export { sprints } from "./sprints.js";
 export { projectWorkspaces } from "./project_workspaces.js";
 export { workspaceRuntimeServices } from "./workspace_runtime_services.js";
 export { projectGoals } from "./project_goals.js";

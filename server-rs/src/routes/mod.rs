@@ -2,6 +2,12 @@ mod activity;
 mod adapters;
 mod admin;
 mod agents;
+mod boards;
+mod company_spaces;
+mod company_departments;
+mod company_posts;
+mod company_classes;
+mod dms;
 mod events;
 mod approvals;
 mod assets;
@@ -20,6 +26,7 @@ mod members;
 mod misc;
 mod projects;
 mod secrets;
+mod sprints;
 mod workspaces;
 
 use axum::extract::FromRef;
@@ -37,18 +44,28 @@ use sqlx::PgPool;
 
 use self::activity::{create_activity, list_activity, list_issue_activity, list_issue_runs, list_run_issues};
 use self::agents::{create_agent, create_agent_key, delete_agent, get_agent, get_agent_me, get_config_revision, get_org, get_runtime_state, heartbeat_agent, invoke_agent, list_agent_configurations, list_agent_keys, list_agents, list_config_revisions, list_task_sessions, pause_agent, reset_runtime_session, resume_agent, revoke_agent_key, rollback_config_revision, terminate_agent, update_agent, update_runtime_state};
-use self::companies::{archive_company, create_company, delete_company, export_company, get_company, get_company_stats, import_company, list_companies, list_companies_stats, openclaw_invite_prompt, update_company};
+use self::companies::{archive_company, create_company, delete_company, export_company, get_company, get_company_stats, import_company, list_companies, list_companies_stats, openclaw_invite_prompt, openfang_invite_prompt, update_company};
 use self::dashboard::dashboard;
 use self::goals::{create_goal, delete_goal, get_goal, list_goals, update_goal};
 use self::health::health;
 use self::issues::{add_issue_attachment, add_issue_comment, checkout_issue, create_issue, delete_issue_attachment, get_issue, link_issue_approval, list_issue_approvals, list_issue_attachments, list_issue_comments, list_issues, mark_issue_read, release_issue, unlink_issue_approval, update_issue};
+use self::boards::{create_board, create_board_column, delete_board, delete_board_column, get_board, list_board_columns, list_boards, update_board, update_board_column};
+use self::company_spaces::{create_company_space, delete_company_space, get_company_space, list_company_spaces, update_company_space};
+use self::company_departments::{create_company_department, delete_company_department, get_company_department, list_company_departments, update_company_department};
+use self::company_posts::{create_company_post, delete_company_post, get_company_post, list_company_posts, update_company_post};
+use self::company_classes::{create_company_class, delete_company_class, get_company_class, list_company_classes, update_company_class};
+use self::dms::{
+    create_dms_document, list_dms_all, list_dms_documents, list_dms_incoming, list_dms_outgoing,
+    upload_dms_document,
+};
 use self::projects::{create_project, delete_project, get_project, list_projects, update_project};
+use self::sprints::{create_sprint, delete_sprint, get_sprint, list_sprints, update_sprint};
 use self::workspaces::{create_workspace, delete_workspace, get_workspace, list_workspaces, update_workspace};
 use self::approvals::{add_approval_comment, approve_approval, create_approval, get_approval, list_approval_comments, list_approval_issues, list_approvals, reject_approval, request_revision_approval, resubmit_approval};
 use self::costs::{create_cost_event, get_costs_by_agent, get_costs_by_project, get_costs_summary, patch_agent_budgets, patch_company_budgets};
 use self::secrets::{create_secret, delete_secret, get_secret, list_secret_providers, list_secrets, rotate_secret, update_secret};
 use self::assets::{create_asset, delete_asset, get_asset, get_asset_content, list_assets};
-use self::invites::{create_invite, get_invite_by_token, list_invites, revoke_invite};
+use self::invites::{create_invite, get_invite_by_token, get_invite_onboarding, get_invite_onboarding_txt, list_invites, revoke_invite};
 use self::join_requests::{approve_join_request, claim_join_request_api_key, get_join_request, list_join_requests, reject_join_request};
 use self::members::{list_members, update_member_permissions};
 use self::admin::{demote_instance_admin, get_user_company_access, promote_instance_admin, put_user_company_access};
@@ -114,6 +131,7 @@ pub fn api_routes(state: ApiState) -> Router<ApiState> {
         .route("/companies/:company_id", get(get_company).patch(update_company).delete(delete_company))
         .route("/companies/:company_id/archive", post(archive_company))
         .route("/companies/:company_id/openclaw/invite-prompt", post(openclaw_invite_prompt))
+        .route("/companies/:company_id/openfang/invite-prompt", post(openfang_invite_prompt))
         .route("/companies/:company_id/stats", get(get_company_stats))
         .route("/companies/:company_id/export", get(export_company))
         .route("/companies/import", post(import_company))
@@ -121,6 +139,25 @@ pub fn api_routes(state: ApiState) -> Router<ApiState> {
         .route("/goals/:id", get(get_goal).patch(update_goal).delete(delete_goal))
         .route("/companies/:company_id/projects", get(list_projects).post(create_project))
         .route("/projects/:id", get(get_project).patch(update_project).delete(delete_project))
+        .route("/companies/:company_id/boards", get(list_boards).post(create_board))
+        .route("/companies/:company_id/boards/:board_id", get(get_board).patch(update_board).delete(delete_board))
+        .route("/companies/:company_id/spaces", get(list_company_spaces).post(create_company_space))
+        .route("/companies/:company_id/spaces/:space_id", get(get_company_space).patch(update_company_space).delete(delete_company_space))
+        .route("/companies/:company_id/departments", get(list_company_departments).post(create_company_department))
+        .route("/companies/:company_id/departments/:department_id", get(get_company_department).patch(update_company_department).delete(delete_company_department))
+        .route("/companies/:company_id/posts", get(list_company_posts).post(create_company_post))
+        .route("/companies/:company_id/posts/:post_id", get(get_company_post).patch(update_company_post).delete(delete_company_post))
+        .route("/companies/:company_id/classes", get(list_company_classes).post(create_company_class))
+        .route("/companies/:company_id/classes/:class_id", get(get_company_class).patch(update_company_class).delete(delete_company_class))
+        .route("/companies/:company_id/dms", get(list_dms_all))
+        .route("/companies/:company_id/dms/documents", get(list_dms_documents).post(create_dms_document))
+        .route("/companies/:company_id/dms/documents/upload", post(upload_dms_document))
+        .route("/companies/:company_id/dms/incoming", get(list_dms_incoming))
+        .route("/companies/:company_id/dms/outgoing", get(list_dms_outgoing))
+        .route("/companies/:company_id/boards/:board_id/columns", get(list_board_columns).post(create_board_column))
+        .route("/companies/:company_id/boards/:board_id/columns/:column_id", patch(update_board_column).delete(delete_board_column))
+        .route("/companies/:company_id/boards/:board_id/sprints", get(list_sprints).post(create_sprint))
+        .route("/companies/:company_id/boards/:board_id/sprints/:sprint_id", get(get_sprint).patch(update_sprint).delete(delete_sprint))
         .route("/projects/:id/workspaces", get(list_workspaces).post(create_workspace))
         .route("/projects/:id/workspaces/:workspace_id", get(get_workspace).patch(update_workspace).delete(delete_workspace))
         .route("/companies/:company_id/agents", get(list_agents).post(create_agent))
@@ -178,6 +215,8 @@ pub fn api_routes(state: ApiState) -> Router<ApiState> {
         .route("/assets/:id/content", get(get_asset_content))
         .route("/companies/:company_id/invites", get(list_invites).post(create_invite))
         .route("/invites/:token", get(get_invite_by_token))
+        .route("/invites/:token/onboarding", get(get_invite_onboarding))
+        .route("/invites/:token/onboarding.txt", get(get_invite_onboarding_txt))
         .route("/invites/:invite_id/revoke", post(revoke_invite))
         .route("/companies/:company_id/members", get(list_members))
         .route("/companies/:company_id/members/:member_id/permissions", patch(update_member_permissions))
@@ -214,6 +253,7 @@ pub fn api_routes(state: ApiState) -> Router<ApiState> {
         .route("/heartbeat-runs/:id/issues", get(list_run_issues))
         .route_layer(middleware::from_fn(crate::metrics::metrics_middleware))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::actor_middleware))
+        .route_layer(middleware::from_fn(auth::require_agent_company_scope))
         .with_state(state)
 }
 
@@ -264,6 +304,19 @@ pub fn api_routes_no_db() -> Router {
         .route("/companies/:company_id/members", get(members::members_no_db))
         .route("/companies/:company_id/events/ws", get(company_events_ws_no_db))
         .route("/companies/:company_id/join-requests", get(join_requests::join_requests_no_db))
+        .route("/companies/:company_id/spaces", get(company_spaces::company_spaces_no_db).post(company_spaces::company_spaces_no_db))
+        .route("/companies/:company_id/spaces/:space_id", get(company_spaces::company_spaces_no_db).patch(company_spaces::company_spaces_no_db).delete(company_spaces::company_spaces_no_db))
+        .route("/companies/:company_id/departments", get(company_departments::company_departments_no_db).post(company_departments::company_departments_no_db))
+        .route("/companies/:company_id/departments/:department_id", get(company_departments::company_departments_no_db).patch(company_departments::company_departments_no_db).delete(company_departments::company_departments_no_db))
+        .route("/companies/:company_id/posts", get(company_posts::company_posts_no_db).post(company_posts::company_posts_no_db))
+        .route("/companies/:company_id/posts/:post_id", get(company_posts::company_posts_no_db).patch(company_posts::company_posts_no_db).delete(company_posts::company_posts_no_db))
+        .route("/companies/:company_id/classes", get(company_classes::company_classes_no_db).post(company_classes::company_classes_no_db))
+        .route("/companies/:company_id/classes/:class_id", get(company_classes::company_classes_no_db).patch(company_classes::company_classes_no_db).delete(company_classes::company_classes_no_db))
+        .route("/companies/:company_id/dms", get(dms::dms_no_db))
+        .route("/companies/:company_id/dms/documents", get(dms::dms_no_db).post(dms::dms_no_db))
+        .route("/companies/:company_id/dms/documents/upload", post(dms::dms_no_db))
+        .route("/companies/:company_id/dms/incoming", get(dms::dms_no_db))
+        .route("/companies/:company_id/dms/outgoing", get(dms::dms_no_db))
         .route("/companies/:company_id/sidebar-badges", get(misc::sidebar_badges_no_db))
         .route("/llms/agent-configuration.txt", get(llms::llms_agent_configuration_index))
         .route("/llms/agent-configuration/:adapter_type", get(llms::llms_agent_configuration_adapter))

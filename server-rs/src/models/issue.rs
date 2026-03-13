@@ -32,6 +32,10 @@ pub struct Issue {
     pub completed_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
     pub hidden_at: Option<DateTime<Utc>>,
+    pub board_id: Option<Uuid>,
+    pub board_column_id: Option<Uuid>,
+    pub sprint_id: Option<Uuid>,
+    pub position: Option<f32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

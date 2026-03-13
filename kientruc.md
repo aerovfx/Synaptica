@@ -1,8 +1,8 @@
-# Phân tích kiến trúc hệ thống Paperclip
+# Phân tích kiến trúc hệ thống Synaptica
 
 ## 1. Vai trò tổng quan
 
-**Paperclip** là **control plane** (mặt phẳng điều khiển) cho công ty vận hành bằng AI agent: một instance có thể quản lý **nhiều company**; mỗi company có agents, goals, tasks, budget và governance.
+**Synaptica** là **control plane** (mặt phẳng điều khiển) cho công ty vận hành bằng AI agent: một instance có thể quản lý **nhiều company**; mỗi company có agents, goals, tasks, budget và governance.
 
 - **Control plane (phần này)**: đăng ký agent, org chart, task, budget, knowledge, heartbeat.
 - **Execution**: agents chạy bên ngoài (process, HTTP, OpenClaw, …), "phone home" về control plane.

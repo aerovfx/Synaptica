@@ -11,6 +11,7 @@ import { SidebarProvider } from "./context/SidebarContext";
 import { DialogProvider } from "./context/DialogContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { UiPresetProvider } from "./context/UiPresetContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "@mdxeditor/editor/style.css";
 import "./index.css";
@@ -45,6 +46,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
+        <UiPresetProvider>
         <CompanyProvider>
           <ToastProvider>
             <LiveUpdatesProvider>
@@ -64,6 +66,7 @@ createRoot(document.getElementById("root")!).render(
             </LiveUpdatesProvider>
           </ToastProvider>
         </CompanyProvider>
+        </UiPresetProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>

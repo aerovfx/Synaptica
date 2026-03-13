@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod agent_api_key;
+pub mod board;
 pub mod agent_config_revision;
 pub mod agent_runtime_state;
 pub mod agent_task_session;
@@ -7,6 +8,11 @@ pub mod approval;
 pub mod approval_comment;
 pub mod asset;
 pub mod company;
+pub mod company_space;
+pub mod company_department;
+pub mod company_post;
+pub mod company_class;
+pub mod dms;
 pub mod company_secret;
 pub mod cost_event;
 pub mod goal;

@@ -7,7 +7,7 @@ use axum::response::IntoResponse;
 
 /// GET /api/llms/agent-configuration.txt — index of adapter config docs (stub).
 pub async fn llms_agent_configuration_index() -> impl IntoResponse {
-    const BODY: &str = r#"# Paperclip Agent Configuration Index
+    const BODY: &str = r#"# Synaptica Agent Configuration Index
 
 Installed adapters (Rust stub):
 - No adapters registered in this build. Use Node server for full adapter list.
@@ -29,7 +29,7 @@ Notes:
 
 /// GET /api/llms/agent-icons.txt — list of allowed agent icon names (stub).
 pub async fn llms_agent_icons() -> impl IntoResponse {
-    const BODY: &str = r#"# Paperclip Agent Icon Names
+    const BODY: &str = r#"# Synaptica Agent Icon Names
 
 Set the `icon` field on hire/create payloads to one of:
 - bot

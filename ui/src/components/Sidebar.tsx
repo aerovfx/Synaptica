@@ -9,6 +9,12 @@ import {
   SquarePen,
   Network,
   Settings,
+  FileText,
+  Building2,
+  Briefcase,
+  BookOpen,
+  MessageSquare,
+  LayoutGrid,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -20,11 +26,30 @@ import { useCompany } from "../context/CompanyContext";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
+import { getCompanyNavItems } from "../config/sidebarTemplates";
+import type { UiTemplate } from "../config/sidebarTemplates";
 import { Button } from "@/components/ui/button";
+
+const COMPANY_NAV_ICONS: Record<string, typeof Network> = {
+  org: Network,
+  dms: FileText,
+  spaces: Building2,
+  departments: Briefcase,
+  classes: BookOpen,
+  social: MessageSquare,
+  costs: DollarSign,
+  activity: History,
+  settings: Settings,
+};
 
 export function Sidebar() {
   const { openNewIssue } = useDialog();
   const { selectedCompanyId, selectedCompany } = useCompany();
+  const uiTemplate: UiTemplate =
+    selectedCompany?.uiTemplate === "school" || selectedCompany?.uiTemplate === "hospital"
+      ? selectedCompany.uiTemplate
+      : "company";
+  const companyNavItems = getCompanyNavItems(uiTemplate);
   const { data: sidebarBadges } = useQuery({
     queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
     queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
@@ -88,6 +113,7 @@ export function Sidebar() {
 
         <SidebarSection label="Work">
           <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
+          <SidebarNavItem to="/boards" label="Boards" icon={LayoutGrid} />
           <SidebarNavItem to="/goals" label="Goals" icon={Target} />
         </SidebarSection>
 
@@ -96,10 +122,17 @@ export function Sidebar() {
         <SidebarAgents />
 
         <SidebarSection label="Company">
-          <SidebarNavItem to="/org" label="Org" icon={Network} />
-          <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
-          <SidebarNavItem to="/activity" label="Activity" icon={History} />
-          <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+          {companyNavItems.map((item) => {
+            const Icon = COMPANY_NAV_ICONS[item.id];
+            return (
+              <SidebarNavItem
+                key={item.id}
+                to={item.path}
+                label={item.label}
+                icon={Icon ?? Settings}
+              />
+            );
+          })}
         </SidebarSection>
       </nav>
     </aside>

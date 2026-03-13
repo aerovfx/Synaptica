@@ -384,11 +384,6 @@ MIT © 2026 Synaptica
 
 <br/>
 
----
-
-<p align="center">
-  <img src="doc/assets/footer.jpg" alt="" width="720" />
-</p>
 
 <p align="center">
   <sub>Open source under MIT. Synaptica — run companies, not babysit agents.</sub>

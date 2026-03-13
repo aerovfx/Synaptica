@@ -30,6 +30,7 @@
     "typecheck": "tsc --noEmit",
     "generate": "tsc -p tsconfig.json && drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
+    "migration-status": "tsx src/migration-status.ts",
     "seed": "tsx src/seed.ts",
     "dedupe-agent-slugs": "tsx src/scripts/dedupe-agent-slugs.ts"
   },

@@ -1,4 +1,4 @@
-# Paperclip — Rust backend + UI
+# Synaptica — Rust backend + UI
 
 Backend API viết bằng Rust (Axum + SQLx), serve luôn UI React (build từ `ui/`). Một process phục vụ cả `/api` và giao diện web.
 
@@ -11,7 +11,7 @@ Backend API viết bằng Rust (Axum + SQLx), serve luôn UI React (build từ `
 ## Chạy app đầy đủ (API + UI)
 
 ```bash
-# 1. Build UI (từ repo gốc paperclip)
+# 1. Build UI (từ repo gốc)
 cd ui && pnpm build && cd ..
 
 # 2. Chạy Rust server (từ repo gốc hoặc từ server-rs)

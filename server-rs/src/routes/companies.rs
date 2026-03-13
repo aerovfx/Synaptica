@@ -2,7 +2,7 @@ use axum::extract::Path;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -116,7 +116,7 @@ async fn insert_default_agents(
 /// GET /api/companies — list all companies
 pub async fn list_companies(State(pool): State<PgPool>) -> Result<Json<Vec<Company>>, (StatusCode, String)> {
     let rows = sqlx::query_as::<_, Company>(
-        "SELECT id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at FROM companies ORDER BY created_at",
+        "SELECT id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, NULL as ui_template, created_at, updated_at FROM companies ORDER BY created_at",
     )
     .fetch_all(&pool)
     .await
@@ -140,7 +140,7 @@ pub async fn get_company(
     let company_id = Uuid::parse_str(&params.company_id)
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let row = sqlx::query_as::<_, Company>(
-        "SELECT id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at FROM companies WHERE id = $1",
+        "SELECT id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, NULL as ui_template, created_at, updated_at FROM companies WHERE id = $1",
     )
     .bind(company_id)
     .fetch_optional(&pool)
@@ -173,6 +173,7 @@ pub async fn get_company(
                     spent_monthly_cents: base.spent_monthly_cents,
                     require_board_approval_for_new_agents: true,
                     brand_color: None,
+                    ui_template: None,
                     created_at: base.created_at,
                     updated_at: base.updated_at,
                 }
@@ -214,7 +215,7 @@ pub async fn create_company(
         let id = Uuid::new_v4();
         let now = chrono::Utc::now();
         let res = sqlx::query_as::<_, Company>(
-            "INSERT INTO companies (id, name, description, status, issue_prefix, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at",
+            "INSERT INTO companies (id, name, description, status, issue_prefix, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, NULL as ui_template, created_at, updated_at",
         )
         .bind(id)
         .bind(&body.name)
@@ -264,7 +265,7 @@ pub async fn update_company(
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let now = chrono::Utc::now();
     let row = sqlx::query_as::<_, Company>(
-        "UPDATE companies SET name = COALESCE($2, name), description = COALESCE($3, description), status = COALESCE($4, status), budget_monthly_cents = COALESCE($5, budget_monthly_cents), updated_at = $6 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at",
+        "UPDATE companies SET name = COALESCE($2, name), description = COALESCE($3, description), status = COALESCE($4, status), budget_monthly_cents = COALESCE($5, budget_monthly_cents), updated_at = $6 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, NULL as ui_template, created_at, updated_at",
     )
     .bind(company_id)
     .bind(body.name.as_deref())
@@ -307,6 +308,7 @@ pub async fn update_company(
                     spent_monthly_cents: base.spent_monthly_cents,
                     require_board_approval_for_new_agents: true,
                     brand_color: None,
+                    ui_template: None,
                     created_at: base.created_at,
                     updated_at: base.updated_at,
                 }
@@ -343,7 +345,7 @@ pub async fn archive_company(
     let now = chrono::Utc::now();
 
     let row = sqlx::query_as::<_, Company>(
-        "UPDATE companies SET status = 'archived', updated_at = $2 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at",
+        "UPDATE companies SET status = 'archived', updated_at = $2 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, NULL as ui_template, created_at, updated_at",
     )
     .bind(company_id)
     .bind(now)
@@ -379,6 +381,7 @@ pub async fn archive_company(
                     spent_monthly_cents: base.spent_monthly_cents,
                     require_board_approval_for_new_agents: true,
                     brand_color: None,
+                    ui_template: None,
                     created_at: base.created_at,
                     updated_at: base.updated_at,
                 }
@@ -576,7 +579,7 @@ pub async fn export_company(
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<CompanyExport>, (StatusCode, String)> {
     let company = sqlx::query_as::<_, Company>(
-        "SELECT id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at FROM companies WHERE id = $1",
+        "SELECT id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, NULL as ui_template, created_at, updated_at FROM companies WHERE id = $1",
     )
     .bind(&params.company_id)
     .fetch_optional(&pool)
@@ -634,24 +637,78 @@ pub async fn import_company(
     .await
 }
 
-/// POST /api/companies/:company_id/openclaw/invite-prompt — stub (not implemented)
+fn hash_invite_token(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(token.as_bytes());
+    format!("{:x}", h.finalize())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitePromptResponse {
+    pub id: Uuid,
+    pub token: String,
+    pub invite_type: String,
+    pub allowed_join_types: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub invite_url: String,
+    pub onboarding_text_path: String,
+}
+
+async fn create_agent_invite(
+    pool: &PgPool,
+    company_id: Uuid,
+) -> Result<InvitePromptResponse, (StatusCode, String)> {
+    let id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+    let expires_at = now + chrono::Duration::days(7);
+    let token = format!("inv_{}", Uuid::new_v4().simple());
+    let token_hash = hash_invite_token(&token);
+    sqlx::query(
+        "INSERT INTO invites (id, company_id, invite_type, token_hash, allowed_join_types, expires_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)",
+    )
+    .bind(id)
+    .bind(company_id)
+    .bind("company_join")
+    .bind(&token_hash)
+    .bind("agent")
+    .bind(expires_at)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(InvitePromptResponse {
+        id,
+        token: token.clone(),
+        invite_type: "company_join".to_string(),
+        allowed_join_types: "agent".to_string(),
+        expires_at,
+        invite_url: format!("/invites/{}", token),
+        onboarding_text_path: format!("/api/invites/{}/onboarding.txt", token),
+    })
+}
+
+/// POST /api/companies/:company_id/openclaw/invite-prompt
 pub async fn openclaw_invite_prompt(
+    State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let _company_id = Uuid::parse_str(&params.company_id)
-        .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "invalid_company_id", "message": "Invalid company id" })),
-            )
-        })?;
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "error": "openclaw_invite_prompt_not_implemented",
-            "message": "OpenClaw invite-prompt is not implemented on this server"
-        })),
-    ))
+) -> Result<(StatusCode, Json<InvitePromptResponse>), (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
+    let resp = create_agent_invite(&pool, company_id).await?;
+    Ok((StatusCode::CREATED, Json(resp)))
+}
+
+/// POST /api/companies/:company_id/openfang/invite-prompt
+pub async fn openfang_invite_prompt(
+    State(pool): State<PgPool>,
+    Path(params): Path<CompanyIdParam>,
+) -> Result<(StatusCode, Json<InvitePromptResponse>), (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
+    let resp = create_agent_invite(&pool, company_id).await?;
+    Ok((StatusCode::CREATED, Json(resp)))
 }
 
 /// GET /api/companies when no DB: return 503

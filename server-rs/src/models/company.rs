@@ -17,6 +17,7 @@ pub struct Company {
     pub spent_monthly_cents: i32,
     pub require_board_approval_for_new_agents: bool,
     pub brand_color: Option<String>,
+    pub ui_template: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -61,6 +61,7 @@ const LEGACY_ADAPTER_TYPES: &[&str] = &[
     "codex_local",
     "cursor",
     "openclaw_gateway",
+    "openfang_gateway",
     "opencode_local",
     "pi_local",
 ];
@@ -171,14 +172,14 @@ fn excerpt(s: &str, max_bytes: usize) -> String {
 }
 
 async fn next_seq(pool: &PgPool, run_id: Uuid) -> Result<i32, String> {
-    let v: Option<(i64,)> = sqlx::query_as(
+    let v: Option<(i32,)> = sqlx::query_as(
         "SELECT COALESCE(MAX(seq), 0) + 1 FROM heartbeat_run_events WHERE run_id = $1",
     )
     .bind(run_id)
     .fetch_optional(pool)
     .await
     .map_err(|e: sqlx::Error| e.to_string())?;
-    Ok(v.map(|(n,)| n as i32).unwrap_or(1))
+    Ok(v.map(|(n,)| n).unwrap_or(1))
 }
 
 async fn emit_event(

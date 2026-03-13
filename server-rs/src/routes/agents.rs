@@ -100,6 +100,7 @@ pub struct CreateAgentBody {
     pub capabilities: Option<String>,
     pub adapter_type: Option<String>,
     pub adapter_config: Option<serde_json::Value>,
+    pub runtime_config: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -256,12 +257,15 @@ pub async fn create_agent(
     let status = body.status.as_deref().unwrap_or("idle");
     let adapter_type = body.adapter_type.as_deref().unwrap_or("process");
     let adapter_config = body.adapter_config.as_ref().cloned().unwrap_or_else(|| json!({}));
+    let runtime_config = body.runtime_config.as_ref().cloned().unwrap_or_else(|| json!({}));
     let reports_to: Option<Uuid> = body.reports_to.as_ref().and_then(|s| Uuid::parse_str(s).ok());
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let row = sqlx::query_as::<_, Agent>(
         "INSERT INTO agents (id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, permissions, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14) RETURNING id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at",
     )
     .bind(id)
-    .bind(&params.company_id)
+    .bind(company_id)
     .bind(&body.name)
     .bind(role)
     .bind(body.title.as_deref())
@@ -271,7 +275,7 @@ pub async fn create_agent(
     .bind(body.capabilities.as_deref())
     .bind(adapter_type)
     .bind(&adapter_config)
-    .bind(&json!({}))
+    .bind(&runtime_config)
     .bind(&json!({}))
     .bind(now)
     .fetch_one(&pool)

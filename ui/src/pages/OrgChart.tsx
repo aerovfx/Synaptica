@@ -33,11 +33,14 @@ interface LayoutNode {
 
 // ── Layout algorithm ────────────────────────────────────────────────────
 
+const reportsOf = (node: OrgNode): OrgNode[] => node.reports ?? [];
+
 /** Compute the width each subtree needs. */
 function subtreeWidth(node: OrgNode): number {
-  if (node.reports.length === 0) return CARD_W;
-  const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
-  const gaps = (node.reports.length - 1) * GAP_X;
+  const reports = reportsOf(node);
+  if (reports.length === 0) return CARD_W;
+  const childrenW = reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
+  const gaps = (reports.length - 1) * GAP_X;
   return Math.max(CARD_W, childrenW + gaps);
 }
 
@@ -45,13 +48,14 @@ function subtreeWidth(node: OrgNode): number {
 function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
   const totalW = subtreeWidth(node);
   const layoutChildren: LayoutNode[] = [];
+  const reports = reportsOf(node);
 
-  if (node.reports.length > 0) {
-    const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
-    const gaps = (node.reports.length - 1) * GAP_X;
+  if (reports.length > 0) {
+    const childrenW = reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
+    const gaps = (reports.length - 1) * GAP_X;
     let cx = x + (totalW - childrenW - gaps) / 2;
 
-    for (const child of node.reports) {
+    for (const child of reports) {
       const cw = subtreeWidth(child);
       layoutChildren.push(layoutTree(child, cx, y + CARD_H + GAP_Y));
       cx += cw + GAP_X;

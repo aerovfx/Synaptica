@@ -68,8 +68,8 @@ pub struct SkillIndexEntry {
 /// GET /api/skills/index — list available skill documents
 pub async fn skills_index() -> Json<Vec<SkillIndexEntry>> {
     Json(vec![
-        SkillIndexEntry { id: "paperclip".to_string(), name: "Paperclip".to_string() },
-        SkillIndexEntry { id: "paperclip-create-agent".to_string(), name: "Paperclip Create Agent".to_string() },
+        SkillIndexEntry { id: "paperclip".to_string(), name: "Synaptica".to_string() },
+        SkillIndexEntry { id: "paperclip-create-agent".to_string(), name: "Synaptica Create Agent".to_string() },
     ])
 }
 

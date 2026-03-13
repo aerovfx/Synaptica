@@ -37,6 +37,42 @@ export const queryKeys = {
     list: (companyId: string) => ["projects", companyId] as const,
     detail: (id: string) => ["projects", "detail", id] as const,
   },
+  companySpaces: {
+    list: (companyId: string) => ["companySpaces", companyId] as const,
+    detail: (companyId: string, spaceId: string) =>
+      ["companySpaces", companyId, spaceId] as const,
+  },
+  companyDepartments: {
+    list: (companyId: string) => ["companyDepartments", companyId] as const,
+    detail: (companyId: string, departmentId: string) =>
+      ["companyDepartments", companyId, departmentId] as const,
+  },
+  companyPosts: {
+    list: (companyId: string) => ["companyPosts", companyId] as const,
+    detail: (companyId: string, postId: string) =>
+      ["companyPosts", companyId, postId] as const,
+  },
+  companyClasses: {
+    list: (companyId: string) => ["companyClasses", companyId] as const,
+    detail: (companyId: string, classId: string) =>
+      ["companyClasses", companyId, classId] as const,
+  },
+  dms: {
+    /** Single key for combined list (one request). */
+    all: (companyId: string) => ["dms", "all", companyId] as const,
+    documents: (companyId: string) => ["dms", "documents", companyId] as const,
+    incoming: (companyId: string) => ["dms", "incoming", companyId] as const,
+    outgoing: (companyId: string) => ["dms", "outgoing", companyId] as const,
+  },
+  boards: {
+    list: (companyId: string) => ["boards", companyId] as const,
+    detail: (companyId: string, boardId: string) =>
+      ["boards", companyId, boardId] as const,
+    columns: (companyId: string, boardId: string) =>
+      ["boards", companyId, boardId, "columns"] as const,
+    sprints: (companyId: string, boardId: string) =>
+      ["boards", companyId, boardId, "sprints"] as const,
+  },
   goals: {
     list: (companyId: string) => ["goals", companyId] as const,
     detail: (id: string) => ["goals", "detail", id] as const,

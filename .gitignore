@@ -37,6 +37,10 @@ tmp/
 .vscode/
 .claude/settings.local.json
 .paperclip-local/
+.aerovfx-skills/
+
+# Rust build
+server-rs/target/
 
 # Playwright
 tests/e2e/test-results/

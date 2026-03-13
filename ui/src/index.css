@@ -114,6 +114,111 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+/* UI preset: blue accent (html has data-ui-preset) */
+html[data-ui-preset="blue"] {
+  --primary: oklch(0.488 0.243 264.376);
+  --primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+}
+html.dark[data-ui-preset="blue"] {
+  --primary: oklch(0.551 0.246 264.376);
+  --primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.551 0.246 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+
+/* UI preset: green accent */
+html[data-ui-preset="green"] {
+  --primary: oklch(0.55 0.18 162);
+  --primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.55 0.18 162);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --chart-1: oklch(0.696 0.17 162.48);
+}
+html.dark[data-ui-preset="green"] {
+  --primary: oklch(0.696 0.17 162.48);
+  --primary-foreground: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.696 0.17 162.48);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+
+/* 2026 trend: Digital Lavender — calm, trust (AI/wellness) */
+html[data-ui-preset="lavender"] {
+  --primary: oklch(0.65 0.15 300);
+  --primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.65 0.15 300);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --chart-1: oklch(0.7 0.12 300);
+}
+html.dark[data-ui-preset="lavender"] {
+  --primary: oklch(0.7 0.14 300);
+  --primary-foreground: oklch(0.2 0 0);
+  --sidebar-primary: oklch(0.7 0.14 300);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+
+/* 2026 trend: Teal — bold confidence */
+html[data-ui-preset="teal"] {
+  --primary: oklch(0.52 0.14 195);
+  --primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.52 0.14 195);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --chart-1: oklch(0.58 0.12 195);
+}
+html.dark[data-ui-preset="teal"] {
+  --primary: oklch(0.62 0.12 195);
+  --primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.62 0.12 195);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+
+/* 2026 trend: Coral — energy & warmth (Dopamine Retro) */
+html[data-ui-preset="coral"] {
+  --primary: oklch(0.68 0.18 25);
+  --primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.68 0.18 25);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --chart-1: oklch(0.7 0.16 25);
+}
+html.dark[data-ui-preset="coral"] {
+  --primary: oklch(0.72 0.16 25);
+  --primary-foreground: oklch(0.2 0 0);
+  --sidebar-primary: oklch(0.72 0.16 25);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+
+/* 2026 trend: Sage — organic, Eco-Brutalism */
+html[data-ui-preset="sage"] {
+  --primary: oklch(0.65 0.11 130);
+  --primary-foreground: oklch(0.2 0 0);
+  --sidebar-primary: oklch(0.65 0.11 130);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --chart-1: oklch(0.7 0.1 130);
+}
+html.dark[data-ui-preset="sage"] {
+  --primary: oklch(0.72 0.1 130);
+  --primary-foreground: oklch(0.2 0 0);
+  --sidebar-primary: oklch(0.72 0.1 130);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+
+/* 2026 trend: Mint — wellness, calm (pair with Lavender) */
+html[data-ui-preset="mint"] {
+  --primary: oklch(0.68 0.12 166);
+  --primary-foreground: oklch(0.2 0 0);
+  --sidebar-primary: oklch(0.68 0.12 166);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --chart-1: oklch(0.75 0.1 166);
+}
+html.dark[data-ui-preset="mint"] {
+  --primary: oklch(0.75 0.1 166);
+  --primary-foreground: oklch(0.2 0 0);
+  --sidebar-primary: oklch(0.75 0.1 166);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -147,6 +147,94 @@ pub async fn create_invite(
     ))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingManifest {
+    invite: InviteRow,
+    onboarding: OnboardingDetails,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingDetails {
+    invite_message: Option<String>,
+    connectivity: Option<ConnectivityInfo>,
+    text_instructions: Option<TextInstructions>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectivityInfo {
+    guidance: Option<String>,
+    connection_candidates: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextInstructions {
+    url: String,
+}
+
+/// GET /api/invites/:token/onboarding — JSON manifest for invite onboarding
+pub async fn get_invite_onboarding(
+    State(pool): State<PgPool>,
+    Path(params): Path<TokenParam>,
+) -> Result<Json<OnboardingManifest>, (StatusCode, String)> {
+    let token_hash = hash_token(&params.token);
+    let invite = sqlx::query_as::<_, InviteRow>(
+        "SELECT id, company_id, invite_type, allowed_join_types, expires_at, revoked_at, accepted_at, created_at FROM invites WHERE token_hash = $1 AND (revoked_at IS NULL) AND (expires_at > now())",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Invite not found or expired".to_string()))?;
+    let manifest = OnboardingManifest {
+        onboarding: OnboardingDetails {
+            invite_message: None,
+            connectivity: Some(ConnectivityInfo {
+                guidance: Some("Verify Paperclip is reachable from your runtime with: GET <base-url>/api/health".to_string()),
+                connection_candidates: vec![],
+            }),
+            text_instructions: Some(TextInstructions {
+                url: format!("/api/invites/{}/onboarding.txt", params.token),
+            }),
+        },
+        invite,
+    };
+    Ok(Json(manifest))
+}
+
+/// GET /api/invites/:token/onboarding.txt — plain-text onboarding instructions for agents
+pub async fn get_invite_onboarding_txt(
+    State(pool): State<PgPool>,
+    Path(params): Path<TokenParam>,
+) -> Result<(StatusCode, [(axum::http::HeaderName, &'static str); 1], String), (StatusCode, String)> {
+    let token_hash = hash_token(&params.token);
+    let invite = sqlx::query_as::<_, InviteRow>(
+        "SELECT id, company_id, invite_type, allowed_join_types, expires_at, revoked_at, accepted_at, created_at FROM invites WHERE token_hash = $1 AND (revoked_at IS NULL) AND (expires_at > now())",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Invite not found or expired".to_string()))?;
+    let company_id = invite.company_id.map(|id| id.to_string()).unwrap_or_default();
+    let token = &params.token;
+    let text = format!(
+        "# Paperclip Agent Onboarding\n\nYou have been invited to join a Paperclip organization as an agent.\n\nInvite type:  {invite_type}\nAllowed join: agents\nExpires:      {expires}\nCompany ID:   {company_id}\n\n## How to join\n\n1. Submit a join request to:\n   POST /api/invites/{token}/accept\n\n   with JSON body:\n   {{\n     \"requestType\": \"agent\",\n     \"agentName\": \"<your agent name>\",\n     \"adapterType\": \"<your adapter type>\",\n     \"agentDefaultsPayload\": {{\n       \"url\": \"<your callback or gateway URL>\"\n     }}\n   }}\n\n   Supported adapterType values: openclaw_gateway, openfang_gateway, http, process\n\n2. If board approval is required, your request will be pending.\n   You will receive a claim secret when approved.\n   If no approval is required, you receive it immediately.\n\n3. Claim your API key:\n   POST /api/join-requests/<requestId>/claim-api-key\n   {{ \"claimSecret\": \"<secret from step 2>\" }}\n\n4. Use the returned token as Bearer in Authorization header for all subsequent calls.\n\n5. Review agent docs at: /api/llms/agent-configuration.txt\n\n## Connectivity check\n\nBefore submitting, verify the server is reachable:\n  GET /api/health\n  Expected: {{ \"status\": \"ok\" }}\n",
+        invite_type = invite.invite_type,
+        expires = invite.expires_at.format("%Y-%m-%dT%H:%M:%SZ"),
+        company_id = company_id,
+        token = token,
+    );
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        text,
+    ))
+}
+
 pub async fn invites_no_db() -> (StatusCode, &'static str) {
     (StatusCode::SERVICE_UNAVAILABLE, "DATABASE_URL not set")
 }

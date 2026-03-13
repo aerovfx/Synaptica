@@ -79,6 +79,10 @@ export interface Issue {
   completedAt: Date | null;
   cancelledAt: Date | null;
   hiddenAt: Date | null;
+  boardId: string | null;
+  boardColumnId: string | null;
+  sprintId: string | null;
+  position: number | null;
   labelIds?: string[];
   labels?: IssueLabel[];
   project?: Project | null;

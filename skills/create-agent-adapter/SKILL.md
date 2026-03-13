@@ -1,16 +1,16 @@
 ---
 name: create-agent-adapter
 description: >
-  Technical guide for creating a new Paperclip agent adapter. Use when building
+  Technical guide for creating a new Synaptica agent adapter. Use when building
   a new adapter package, adding support for a new AI coding tool (e.g. a new
   CLI agent, API-based agent, or custom process), or when modifying the adapter
   system. Covers the required interfaces, module structure, registration points,
   and conventions derived from the existing claude-local and codex-local adapters.
 ---
 
-# Creating a Paperclip Agent Adapter
+# Creating a Synaptica Agent Adapter
 
-An adapter bridges Paperclip's orchestration layer to a specific AI agent runtime (Claude Code, Codex CLI, a custom process, an HTTP endpoint, etc.). Each adapter is a self-contained package that provides implementations for **three consumers**: the server, the UI, and the CLI.
+An adapter bridges Synaptica's orchestration layer to a specific AI agent runtime (Claude Code, Codex CLI, a custom process, an HTTP endpoint, etc.). Each adapter is a self-contained package that provides implementations for **three consumers**: the server, the UI, and the CLI.
 
 ---
 
