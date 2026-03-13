@@ -165,6 +165,7 @@ pub async fn demote_instance_admin(
     Ok(Json(row))
 }
 
+#[allow(dead_code)]
 pub async fn admin_no_db() -> (StatusCode, &'static str) {
     (StatusCode::SERVICE_UNAVAILABLE, "DATABASE_URL not set")
 }

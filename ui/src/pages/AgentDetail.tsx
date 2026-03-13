@@ -12,6 +12,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { AgentConfigForm } from "../components/AgentConfigForm";
 import { PageTabBar } from "../components/PageTabBar";
@@ -579,20 +580,22 @@ export function AgentDetail() {
         </p>
       )}
 
-      {/* Floating Save/Cancel (desktop) */}
+      {/* Floating Save/Cancel (desktop) — z-30 so it stays above form content */}
       {!isMobile && (
         <div
           className={cn(
-            "sticky top-6 z-10 float-right transition-opacity duration-150",
+            "sticky top-6 z-30 float-right transition-opacity duration-150",
             showConfigActionBar
               ? "opacity-100"
               : "opacity-0 pointer-events-none"
           )}
+          aria-hidden={!showConfigActionBar}
         >
           <div className="flex items-center gap-2 bg-background/90 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg">
             <Button
               variant="ghost"
               size="sm"
+              type="button"
               onClick={() => cancelConfigActionRef.current?.()}
               disabled={configSaving}
             >
@@ -600,6 +603,7 @@ export function AgentDetail() {
             </Button>
             <Button
               size="sm"
+              type="button"
               onClick={() => saveConfigActionRef.current?.()}
               disabled={configSaving}
             >
@@ -619,6 +623,7 @@ export function AgentDetail() {
             <Button
               variant="ghost"
               size="sm"
+              type="button"
               onClick={() => cancelConfigActionRef.current?.()}
               disabled={configSaving}
             >
@@ -626,6 +631,7 @@ export function AgentDetail() {
             </Button>
             <Button
               size="sm"
+              type="button"
               onClick={() => saveConfigActionRef.current?.()}
               disabled={configSaving}
             >
@@ -656,6 +662,7 @@ export function AgentDetail() {
           onSaveActionChange={setSaveConfigAction}
           onCancelActionChange={setCancelConfigAction}
           onSavingChange={setConfigSaving}
+          onSaveError={(msg) => setActionError(msg)}
           updatePermissions={updatePermissions}
         />
       )}
@@ -919,6 +926,7 @@ function AgentConfigurePage({
   onSaveActionChange,
   onCancelActionChange,
   onSavingChange,
+  onSaveError,
   updatePermissions,
 }: {
   agent: Agent;
@@ -928,6 +936,7 @@ function AgentConfigurePage({
   onSaveActionChange: (save: (() => void) | null) => void;
   onCancelActionChange: (cancel: (() => void) | null) => void;
   onSavingChange: (saving: boolean) => void;
+  onSaveError?: (message: string) => void;
   updatePermissions: { mutate: (canCreate: boolean) => void; isPending: boolean };
 }) {
   const queryClient = useQueryClient();
@@ -955,6 +964,7 @@ function AgentConfigurePage({
         onSaveActionChange={onSaveActionChange}
         onCancelActionChange={onCancelActionChange}
         onSavingChange={onSavingChange}
+        onSaveError={onSaveError}
         updatePermissions={updatePermissions}
         companyId={companyId}
       />
@@ -1026,6 +1036,7 @@ function ConfigurationTab({
   onSaveActionChange,
   onCancelActionChange,
   onSavingChange,
+  onSaveError,
   updatePermissions,
 }: {
   agent: Agent;
@@ -1034,9 +1045,12 @@ function ConfigurationTab({
   onSaveActionChange: (save: (() => void) | null) => void;
   onCancelActionChange: (cancel: (() => void) | null) => void;
   onSavingChange: (saving: boolean) => void;
+  onSaveError?: (message: string) => void;
   updatePermissions: { mutate: (canCreate: boolean) => void; isPending: boolean };
 }) {
   const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+  const [saveSuccessTrigger, setSaveSuccessTrigger] = useState(0);
 
   const { data: adapterModels } = useQuery({
     queryKey:
@@ -1049,10 +1063,20 @@ function ConfigurationTab({
 
   const updateAgent = useMutation({
     mutationFn: (data: Record<string, unknown>) => agentsApi.update(agent.id, data, companyId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent.urlKey) });
+    onSuccess: (data: Agent) => {
+      onSaveError?.("");
+      const key = (id: string) => [...queryKeys.agents.detail(id), companyId ?? null] as const;
+      queryClient.setQueryData(key(agent.id), data);
+      if (agent.urlKey && agent.urlKey !== agent.id) {
+        queryClient.setQueryData(key(agent.urlKey), data);
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.configRevisions(agent.id) });
+      setSaveSuccessTrigger((t) => t + 1);
+      pushToast({ title: "Đã lưu", tone: "success" });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Save failed";
+      onSaveError?.(msg);
     },
   });
 
@@ -1073,6 +1097,7 @@ function ConfigurationTab({
         onCancelActionChange={onCancelActionChange}
         hideInlineSave
         sectionLayout="cards"
+        saveSuccessTrigger={saveSuccessTrigger}
       />
 
       <div>
@@ -1892,6 +1917,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
       reconnectTimer = window.setTimeout(connect, 1500);
     };
 
+    let openDelayTimer: number | null = null;
     const connect = () => {
       if (closed) return;
       const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -1975,12 +2001,17 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
       };
     };
 
-    connect();
+    const WS_OPEN_DELAY_MS = 120;
+    openDelayTimer = window.setTimeout(() => {
+      openDelayTimer = null;
+      connect();
+    }, WS_OPEN_DELAY_MS);
 
     return () => {
       closed = true;
       setIsStreamingConnected(false);
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      if (openDelayTimer !== null) window.clearTimeout(openDelayTimer);
       if (socket) {
         socket.onopen = null;
         socket.onmessage = null;

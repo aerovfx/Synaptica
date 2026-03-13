@@ -91,7 +91,8 @@ function applyFilters(issues: Issue[], state: IssueViewState): Issue[] {
   let result = issues;
   if (state.statuses.length > 0) result = result.filter((i) => state.statuses.includes(i.status));
   if (state.priorities.length > 0) result = result.filter((i) => state.priorities.includes(i.priority));
-  if (state.assignees.length > 0) result = result.filter((i) => i.assigneeAgentId != null && state.assignees.includes(i.assigneeAgentId));
+  // Khi filter theo assignee: hiển thị issue được assign cho agent đó HOẶC chưa assign (để issue mới tạo vẫn hiện)
+  if (state.assignees.length > 0) result = result.filter((i) => i.assigneeAgentId == null || state.assignees.includes(i.assigneeAgentId));
   if (state.labels.length > 0) result = result.filter((i) => (i.labelIds ?? []).some((id) => state.labels.includes(id)));
   return result;
 }

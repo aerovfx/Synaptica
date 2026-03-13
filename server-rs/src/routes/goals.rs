@@ -45,13 +45,18 @@ pub async fn list_goals(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<Goal>>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let rows = sqlx::query_as::<_, Goal>(
         "SELECT id, company_id, title, description, level, status, parent_id, owner_agent_id, created_at, updated_at FROM goals WHERE company_id = $1 ORDER BY created_at",
     )
-    .bind(params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/goals failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 
@@ -60,13 +65,18 @@ pub async fn get_goal(
     State(pool): State<PgPool>,
     Path(params): Path<GoalIdParam>,
 ) -> Result<Json<Goal>, (StatusCode, String)> {
+    let id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid goal id".to_string()))?;
     let row = sqlx::query_as::<_, Goal>(
         "SELECT id, company_id, title, description, level, status, parent_id, owner_agent_id, created_at, updated_at FROM goals WHERE id = $1",
     )
-    .bind(&params.id)
+    .bind(id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| {
+        tracing::error!("GET /api/goals/:id failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Goal not found".to_string()))?;
     Ok(Json(row))
 }
@@ -77,6 +87,8 @@ pub async fn create_goal(
     Path(params): Path<CompanyIdParam>,
     Json(body): Json<CreateGoalBody>,
 ) -> Result<(StatusCode, Json<Goal>), (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let id = Uuid::new_v4();
     let now = chrono::Utc::now();
     let level = body.level.as_deref().unwrap_or("task");
@@ -87,7 +99,7 @@ pub async fn create_goal(
         "INSERT INTO goals (id, company_id, title, description, level, status, parent_id, owner_agent_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING id, company_id, title, description, level, status, parent_id, owner_agent_id, created_at, updated_at",
     )
     .bind(id)
-    .bind(&params.company_id)
+    .bind(company_id)
     .bind(&body.title)
     .bind(&body.description)
     .bind(level)
@@ -97,7 +109,10 @@ pub async fn create_goal(
     .bind(now)
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("POST /api/companies/:company_id/goals failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -107,11 +122,13 @@ pub async fn update_goal(
     Path(params): Path<GoalIdParam>,
     Json(body): Json<UpdateGoalBody>,
 ) -> Result<Json<Goal>, (StatusCode, String)> {
+    let id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid goal id".to_string()))?;
     let now = chrono::Utc::now();
     let row = sqlx::query_as::<_, Goal>(
         "UPDATE goals SET title = COALESCE($2, title), description = COALESCE($3, description), level = COALESCE($4, level), status = COALESCE($5, status), parent_id = COALESCE($6, parent_id), owner_agent_id = COALESCE($7, owner_agent_id), updated_at = $8 WHERE id = $1 RETURNING id, company_id, title, description, level, status, parent_id, owner_agent_id, created_at, updated_at",
     )
-    .bind(&params.id)
+    .bind(id)
     .bind(body.title.as_deref())
     .bind(body.description.as_deref())
     .bind(body.level.as_deref())
@@ -121,7 +138,10 @@ pub async fn update_goal(
     .bind(now)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| {
+        tracing::error!("PATCH /api/goals/:id failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Goal not found".to_string()))?;
     Ok(Json(row))
 }
@@ -131,11 +151,16 @@ pub async fn delete_goal(
     State(pool): State<PgPool>,
     Path(params): Path<GoalIdParam>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid goal id".to_string()))?;
     let r = sqlx::query("DELETE FROM goals WHERE id = $1")
-        .bind(&params.id)
+        .bind(id)
         .execute(&pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("DELETE /api/goals/:id failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
     if r.rows_affected() == 0 {
         return Err((StatusCode::NOT_FOUND, "Goal not found".to_string()));
     }

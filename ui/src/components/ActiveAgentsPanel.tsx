@@ -290,6 +290,7 @@ export function ActiveAgentsPanel({ companyId }: ActiveAgentsPanelProps) {
       reconnectTimer = window.setTimeout(connect, 1500);
     };
 
+    let openDelayTimer: number | null = null;
     const connect = () => {
       if (closed) return;
       const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -362,11 +363,16 @@ export function ActiveAgentsPanel({ companyId }: ActiveAgentsPanelProps) {
       };
     };
 
-    connect();
+    const WS_OPEN_DELAY_MS = 120;
+    openDelayTimer = window.setTimeout(() => {
+      openDelayTimer = null;
+      connect();
+    }, WS_OPEN_DELAY_MS);
 
     return () => {
       closed = true;
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      if (openDelayTimer !== null) window.clearTimeout(openDelayTimer);
       if (socket) {
         socket.onmessage = null;
         socket.onerror = null;

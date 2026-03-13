@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent } f
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
+import { useToast } from "../context/ToastContext";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { agentsApi } from "../api/agents";
@@ -13,6 +14,7 @@ import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -256,6 +258,7 @@ export function NewIssueDialog() {
     enabled: Boolean(effectiveCompanyId) && newIssueOpen && supportsAssigneeOverrides,
   });
 
+  const { pushToast } = useToast();
   const createIssue = useMutation({
     mutationFn: ({ companyId, ...data }: { companyId: string } & Record<string, unknown>) =>
       issuesApi.create(companyId, data),
@@ -265,6 +268,10 @@ export function NewIssueDialog() {
       clearDraft();
       reset();
       closeNewIssue();
+    },
+    onError: (err) => {
+      const message = err instanceof Error ? err.message : "Failed to create issue";
+      pushToast({ title: "Create issue failed", body: message, tone: "error" });
     },
   });
 
@@ -589,6 +596,7 @@ export function NewIssueDialog() {
           }
         }}
       >
+        <DialogTitle className="sr-only">New issue</DialogTitle>
         {/* Header bar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

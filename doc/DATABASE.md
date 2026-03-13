@@ -33,33 +33,79 @@ Docker note: the Docker quickstart image also uses embedded PostgreSQL by defaul
 
 ## 2. Local PostgreSQL (Docker)
 
-For a full PostgreSQL server locally, use the included Docker Compose setup:
+For a full PostgreSQL server locally, use the included Docker Compose setup. From the repo root, ensure `.env` exists with at least `BETTER_AUTH_SECRET` (see `.env.example`), then:
 
 ```sh
-docker compose up -d
+docker compose up -d db
 ```
 
-This starts PostgreSQL 17 on `localhost:5432`. Then set the connection string (user and database name are up to you, e.g. `paperclip` or `paperclip1`):
+This starts only PostgreSQL 17 on `localhost:5432` (user `paperclip`, password `paperclip`, database `paperclip`). Set the connection string in `.env`:
 
 ```sh
 cp .env.example .env
-# Edit .env; examples:
+# .env should include:
 # DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip
-# DATABASE_URL=postgres://paperclip1:YOUR_PASSWORD@localhost:5432/paperclip1
 ```
 
-Run migrations (once the migration generation issue is fixed) or use `drizzle-kit push`:
+Run migrations (required so the app sees tables like `agents`). The migrate script does not read the repo `.env`, so pass the URL explicitly:
 
 ```sh
-DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip \
-  npx drizzle-kit push
+DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip pnpm db:migrate
 ```
 
-Start the server:
+Start the server (the dev runner loads `.env` from repo root and passes vars to the Rust server, so `DATABASE_URL` in `.env` is used):
 
 ```sh
 pnpm dev
 ```
+
+**Connecting with `psql`:** When Postgres runs in Docker it listens on TCP (`localhost:5432`), not the default Unix socket. Use TCP explicitly:
+
+```sh
+psql "postgres://paperclip:paperclip@localhost:5432/paperclip"
+# or
+psql -h localhost -p 5432 -U paperclip -d paperclip
+```
+
+If you see `connection to server on socket ... failed: No such file or directory`, the DB is likely in Docker—use one of the commands above (and ensure `docker compose up -d db` is running).
+
+**If you see `permission denied for database paperclip`:**
+
+1. **Check what is on port 5432.** Another Postgres (e.g. from `paperclip/docker-compose.yml`, Homebrew, or system) may be using 5432, so your migrate command talks to that server instead of `synaptica-db-1`:
+
+   ```sh
+   docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+   lsof -i :5432
+   ```
+
+   If another process is using 5432, the `synaptica-db-1` container may have failed to start (check `docker ps -a`). Stop the other Postgres (e.g. `docker stop <other-db-container>` or `brew services stop postgresql`), then:
+
+   ```sh
+   docker start synaptica-db-1
+   # wait a few seconds
+   DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip pnpm db:migrate
+   ```
+
+2. **If only `synaptica-db-1` is on 5432** but migrate still fails, another process may be bound to 5432. Run migration from a container on the same Docker network (so it connects to the `db` service). Use a copy of the repo inside the container so Linux gets its own `node_modules` (avoids esbuild platform errors when mounting from macOS):
+
+   ```sh
+   docker run --rm --network synaptica_default \
+     -v "$(pwd):/source:ro" -v synaptica_migrate_app:/app -w /app \
+     -e DATABASE_URL=postgres://paperclip:paperclip@db:5432/paperclip \
+     node:20-alpine sh -c "cp -r /source/. /app/ && rm -rf /app/node_modules /app/packages/*/node_modules 2>/dev/null; npm install -g pnpm && pnpm install && pnpm db:migrate"
+   ```
+
+3. **Otherwise** use a clean Postgres and re-run migrations:
+
+   ```sh
+   docker compose down
+   docker volume rm synaptica_pgdata 2>/dev/null || docker volume rm $(docker volume ls -q | grep pgdata) 2>/dev/null || true
+   docker compose up -d db
+   # wait a few seconds, then:
+   DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip pnpm db:migrate
+   ```
+
+If your Compose project name is not `synaptica`, the volume may be named `<project>_pgdata`; run `docker volume ls` to confirm.
 
 ## 3. Hosted PostgreSQL (Supabase)
 

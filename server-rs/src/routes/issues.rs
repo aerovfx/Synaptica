@@ -50,14 +50,34 @@ pub async fn list_issues(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<Issue>>, (StatusCode, String)> {
-    let rows = sqlx::query_as::<_, Issue>(
-        "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at FROM issues WHERE company_id = $1 ORDER BY created_at",
-    )
-    .bind(params.company_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    Ok(Json(rows))
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
+    let full_query = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at FROM issues WHERE company_id = $1 ORDER BY created_at";
+    match sqlx::query_as::<_, Issue>(full_query)
+        .bind(company_id)
+        .fetch_all(&pool)
+        .await
+    {
+        Ok(rows) => return Ok(Json(rows)),
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("does not exist") || err_str.contains("column") {
+                tracing::warn!("GET /api/companies/:company_id/issues full query failed (schema?), trying fallback: {}", e);
+                let fallback = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, NULL::jsonb AS assignee_adapter_overrides, NULL::jsonb AS execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at FROM issues WHERE company_id = $1 ORDER BY created_at";
+                let rows = sqlx::query_as::<_, Issue>(fallback)
+                    .bind(company_id)
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(|e2| {
+                        tracing::error!("GET /api/companies/:company_id/issues fallback failed: {}", e2);
+                        (StatusCode::INTERNAL_SERVER_ERROR, e2.to_string())
+                    })?;
+                return Ok(Json(rows));
+            }
+            tracing::error!("GET /api/companies/:company_id/issues failed: {}", e);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, err_str));
+        }
+    }
 }
 
 /// GET /api/issues/:id
@@ -65,13 +85,18 @@ pub async fn get_issue(
     State(pool): State<PgPool>,
     Path(params): Path<IssueIdParam>,
 ) -> Result<Json<Issue>, (StatusCode, String)> {
+    let id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid issue id".to_string()))?;
     let row = sqlx::query_as::<_, Issue>(
         "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at FROM issues WHERE id = $1",
     )
-    .bind(&params.id)
+    .bind(id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| {
+        tracing::error!("GET /api/issues/:id failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
     Ok(Json(row))
 }
@@ -145,22 +170,64 @@ pub async fn create_issue(
     let project_id: Option<Uuid> = body.project_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
     let goal_id: Option<Uuid> = body.goal_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
     let parent_id: Option<Uuid> = body.parent_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
-    let row = sqlx::query_as::<_, Issue>(
-        "INSERT INTO issues (id, company_id, project_id, goal_id, parent_id, title, description, status, priority, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at",
-    )
-    .bind(id)
-    .bind(&params.company_id)
-    .bind(project_id)
-    .bind(goal_id)
-    .bind(parent_id)
-    .bind(&body.title)
-    .bind(&body.description)
-    .bind(status)
-    .bind(priority)
-    .bind(now)
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
+
+    let insert_only = "INSERT INTO issues (id, company_id, project_id, goal_id, parent_id, title, description, status, priority, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)";
+    let full_returning = "INSERT INTO issues (id, company_id, project_id, goal_id, parent_id, title, description, status, priority, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, assignee_user_id, checkout_run_id, execution_run_id, execution_agent_name_key, execution_locked_at, created_by_agent_id, created_by_user_id, issue_number, identifier, request_depth, billing_code, assignee_adapter_overrides, execution_workspace_settings, started_at, completed_at, cancelled_at, hidden_at, created_at, updated_at";
+
+    let row = match sqlx::query_as::<_, Issue>(full_returning)
+        .bind(id)
+        .bind(company_id)
+        .bind(project_id)
+        .bind(goal_id)
+        .bind(parent_id)
+        .bind(&body.title)
+        .bind(&body.description)
+        .bind(status)
+        .bind(priority)
+        .bind(now)
+        .fetch_one(&pool)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("does not exist") || err_str.contains("column") {
+                tracing::warn!("POST /api/companies/:company_id/issues RETURNING failed (schema?), using insert + fallback select: {}", e);
+                sqlx::query(insert_only)
+                    .bind(id)
+                    .bind(company_id)
+                    .bind(project_id)
+                    .bind(goal_id)
+                    .bind(parent_id)
+                    .bind(&body.title)
+                    .bind(&body.description)
+                    .bind(status)
+                    .bind(priority)
+                    .bind(now)
+                    .execute(&pool)
+                    .await
+                    .map_err(|e2| {
+                        tracing::error!("POST /api/companies/:company_id/issues INSERT failed: {}", e2);
+                        (StatusCode::INTERNAL_SERVER_ERROR, e2.to_string())
+                    })?;
+                // Minimal fallback: only columns from base migration (0000), NULL for later columns
+                let fallback = "SELECT id, company_id, project_id, goal_id, parent_id, title, description, status, priority, assignee_agent_id, NULL::text AS assignee_user_id, NULL::uuid AS checkout_run_id, NULL::uuid AS execution_run_id, NULL::text AS execution_agent_name_key, NULL::timestamptz AS execution_locked_at, created_by_agent_id, created_by_user_id, NULL::int AS issue_number, NULL::text AS identifier, request_depth, billing_code, NULL::jsonb AS assignee_adapter_overrides, NULL::jsonb AS execution_workspace_settings, started_at, completed_at, cancelled_at, NULL::timestamptz AS hidden_at, created_at, updated_at FROM issues WHERE id = $1";
+                sqlx::query_as::<_, Issue>(fallback)
+                    .bind(id)
+                    .fetch_one(&pool)
+                    .await
+                    .map_err(|e2| {
+                        tracing::error!("POST /api/companies/:company_id/issues fallback SELECT failed: {}", e2);
+                        (StatusCode::INTERNAL_SERVER_ERROR, e2.to_string())
+                    })?
+            } else {
+                tracing::error!("POST /api/companies/:company_id/issues failed: {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, err_str));
+            }
+        }
+    };
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -233,13 +300,18 @@ pub async fn list_issue_comments(
     State(pool): State<PgPool>,
     Path(params): Path<IssueIdParam>,
 ) -> Result<Json<Vec<IssueComment>>, (StatusCode, String)> {
+    let issue_id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid issue id".to_string()))?;
     let rows = sqlx::query_as::<_, IssueComment>(
         "SELECT id, company_id, issue_id, author_agent_id, author_user_id, body, created_at, updated_at FROM issue_comments WHERE issue_id = $1 ORDER BY created_at",
     )
-    .bind(&params.id)
+    .bind(issue_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/issues/:id/comments failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 
@@ -468,6 +540,6 @@ pub async fn update_issue(
 pub async fn issues_no_db() -> (StatusCode, &'static str) {
     (
         StatusCode::SERVICE_UNAVAILABLE,
-        "DATABASE_URL not set; use Node server or set DATABASE_URL",
+        "DATABASE_URL not set; use pnpm dev from repo root or set DATABASE_URL",
     )
 }

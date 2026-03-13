@@ -1,4 +1,5 @@
 use axum::extract::Path;
+use axum::extract::Query;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
@@ -6,6 +7,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 use sqlx::PgPool;
+use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 use crate::auth::RequireBoard;
@@ -24,6 +26,66 @@ pub struct CompanyIdParam {
 #[derive(Deserialize)]
 pub struct AgentIdParam {
     pub id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetAgentQuery {
+    pub company_id: Option<String>,
+}
+
+/// Vietnamese: đ/Đ → d; then NFD + strip combining marks. Two passes so ưở → ư → u (matches TS removeVietnameseAccents).
+fn remove_vietnamese_accents(s: &str) -> String {
+    let d_replaced = s.replace('\u{0111}', "d").replace('\u{0110}', "d");
+    let strip = |t: &str| {
+        t.nfd()
+            .filter(|c| !(0x0300..=0x036F).contains(&u32::from(*c)))
+            .collect::<String>()
+    };
+    let first = strip(&d_replaced);
+    strip(&first)
+}
+
+/// Legacy slug: single NFD pass (ư, ơ etc. stay and become `-`). Used for backward compat with old URLs.
+fn normalize_agent_slug_legacy(s: &str) -> Option<String> {
+    let d_replaced = s.trim().replace('\u{0111}', "d").replace('\u{0110}', "d");
+    let no_accent: String = d_replaced
+        .nfd()
+        .filter(|c| !(0x0300..=0x036F).contains(&u32::from(*c)))
+        .collect();
+    let t = no_accent.to_lowercase();
+    let slug: String = t
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        None
+    } else {
+        Some(slug)
+    }
+}
+
+/// Normalize string to URL slug (matches TS normalizeAgentUrlKey): Vietnamese -> no dấu, lowercase, non-alphanumeric -> `-`, trim `-`.
+fn normalize_agent_slug(s: &str) -> Option<String> {
+    let no_accent = remove_vietnamese_accents(s.trim());
+    let t = no_accent.to_lowercase();
+    let slug: String = t
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        None
+    } else {
+        Some(slug)
+    }
 }
 
 #[derive(Deserialize)]
@@ -52,6 +114,7 @@ pub struct UpdateAgentBody {
     pub capabilities: Option<String>,
     pub adapter_type: Option<String>,
     pub adapter_config: Option<serde_json::Value>,
+    pub runtime_config: Option<serde_json::Value>,
 }
 
 /// GET /api/agents/me — identity of current agent (header X-Agent-Id required until auth)
@@ -79,29 +142,105 @@ pub async fn list_agents(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<Agent>>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let rows = sqlx::query_as::<_, Agent>(
         "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE company_id = $1 ORDER BY created_at",
     )
-    .bind(params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/agents failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 
-/// GET /api/agents/:id
+/// GET /api/agents/:id — id may be UUID or slug (e.g. ceo-agent); when slug, query companyId required.
 pub async fn get_agent(
     State(pool): State<PgPool>,
     Path(params): Path<AgentIdParam>,
+    Query(query): Query<GetAgentQuery>,
 ) -> Result<Json<Agent>, (StatusCode, String)> {
-    let row = sqlx::query_as::<_, Agent>(
-        "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE id = $1",
-    )
-    .bind(&params.id)
+    if let Ok(uuid) = Uuid::parse_str(&params.id) {
+        let row = match sqlx::query_as::<_, Agent>(
+            "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type,
+             COALESCE(adapter_config, '{}'::jsonb) AS adapter_config,
+             COALESCE(runtime_config, '{}'::jsonb) AS runtime_config,
+             budget_monthly_cents, spent_monthly_cents,
+             COALESCE(permissions, '{}'::jsonb) AS permissions,
+             last_heartbeat_at, metadata, created_at, updated_at
+             FROM agents WHERE id = $1",
+        )
+        .bind(uuid)
         .fetch_optional(&pool)
+        .await
+        {
+            Ok(Some(r)) => r,
+            Ok(None) => return Err((StatusCode::NOT_FOUND, "Agent not found".to_string())),
+            Err(e) => {
+                let msg = e.to_string();
+                tracing::error!("GET /api/agents/:id failed: {}", e);
+                if msg.contains("does not exist") || msg.contains("unexpected null") {
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Database schema issue: {}. Try running: pnpm db:migrate", msg),
+                    ));
+                }
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
+            }
+        };
+        return Ok(Json(row));
+    }
+
+    let company_id_str = query
+        .company_id
+        .as_deref()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "When agent id is not a UUID, companyId query is required".to_string()))?;
+    let company_id = Uuid::parse_str(company_id_str)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid companyId".to_string()))?;
+    let wanted_slug = normalize_agent_slug(&params.id)
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid agent slug".to_string()))?;
+
+    let rows = sqlx::query_as::<_, Agent>(
+        "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type,
+         COALESCE(adapter_config, '{}'::jsonb) AS adapter_config,
+         COALESCE(runtime_config, '{}'::jsonb) AS runtime_config,
+         budget_monthly_cents, spent_monthly_cents,
+         COALESCE(permissions, '{}'::jsonb) AS permissions,
+         last_heartbeat_at, metadata, created_at, updated_at
+         FROM agents WHERE company_id = $1 AND status != 'terminated' ORDER BY created_at",
+    )
+    .bind(company_id)
+    .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/agents/:id (slug lookup) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    let matches: Vec<_> = rows
+        .iter()
+        .filter(|a| normalize_agent_slug(&a.name).as_deref() == Some(wanted_slug.as_str()))
+        .cloned()
+        .collect();
+    let row = match matches.len() {
+        1 => matches.into_iter().next().unwrap(),
+        0 => {
+            // Backward compat: try legacy slug (e.g. hi-u-tr-ng for "Hiệu trưởng") so old links still open.
+            let legacy: Vec<_> = rows
+                .iter()
+                .filter(|a| normalize_agent_slug_legacy(&a.name).as_deref() == Some(wanted_slug.as_str()))
+                .cloned()
+                .collect();
+            match legacy.len() {
+                1 => legacy.into_iter().next().unwrap(),
+                _ => return Err((StatusCode::NOT_FOUND, "Agent not found".to_string())),
+            }
+        }
+        _ => return Err((StatusCode::CONFLICT, "Multiple agents match this slug".to_string())),
+    };
     Ok(Json(row))
 }
 
@@ -146,13 +285,14 @@ pub async fn heartbeat_agent(
     State(pool): State<PgPool>,
     Path(params): Path<AgentIdParam>,
 ) -> Result<Json<Agent>, (StatusCode, String)> {
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
     let now = chrono::Utc::now();
     let row = sqlx::query_as::<_, Agent>(
         "UPDATE agents SET last_heartbeat_at = $2, updated_at = $2 WHERE id = $1 RETURNING id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at",
     )
-    .bind(&params.id)
+    .bind(agent_id)
     .bind(now)
-        .fetch_optional(&pool)
+    .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -164,13 +304,24 @@ pub async fn list_config_revisions(
     State(pool): State<PgPool>,
     Path(params): Path<AgentIdParam>,
 ) -> Result<Json<Vec<AgentConfigRevision>>, (StatusCode, String)> {
-    let rows = sqlx::query_as::<_, AgentConfigRevision>(
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
+    let rows = match sqlx::query_as::<_, AgentConfigRevision>(
         "SELECT id, company_id, agent_id, created_by_agent_id, created_by_user_id, source, rolled_back_from_revision_id, changed_keys, before_config, after_config, created_at FROM agent_config_revisions WHERE agent_id = $1 ORDER BY created_at DESC LIMIT 50",
     )
-    .bind(&params.id)
+    .bind(agent_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("does not exist") {
+                return Ok(Json(Vec::new()));
+            }
+            tracing::error!("GET /api/agents/:id/config-revisions failed: {}", e);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
+        }
+    };
     Ok(Json(rows))
 }
 
@@ -179,11 +330,13 @@ pub async fn get_config_revision(
     State(pool): State<PgPool>,
     Path(params): Path<AgentRevisionIdParam>,
 ) -> Result<Json<AgentConfigRevision>, (StatusCode, String)> {
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
+    let revision_id = Uuid::parse_str(&params.revision_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid revision id".to_string()))?;
     let row = sqlx::query_as::<_, AgentConfigRevision>(
         "SELECT id, company_id, agent_id, created_by_agent_id, created_by_user_id, source, rolled_back_from_revision_id, changed_keys, before_config, after_config, created_at FROM agent_config_revisions WHERE agent_id = $1 AND id = $2",
     )
-    .bind(&params.id)
-    .bind(&params.revision_id)
+    .bind(agent_id)
+    .bind(revision_id)
     .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -273,20 +426,61 @@ pub async fn rollback_config_revision(
     Ok(Json(row))
 }
 
-/// GET /api/agents/:id/runtime-state
+/// GET /api/agents/:id/runtime-state — returns stored state or default when no row exists
 pub async fn get_runtime_state(
     State(pool): State<PgPool>,
     Path(params): Path<AgentIdParam>,
 ) -> Result<Json<AgentRuntimeState>, (StatusCode, String)> {
-    let row = sqlx::query_as::<_, AgentRuntimeState>(
+    let agent_id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
+    match sqlx::query_as::<_, AgentRuntimeState>(
         "SELECT agent_id, company_id, adapter_type, session_id, state_json, last_run_id, last_run_status, total_input_tokens, total_output_tokens, total_cached_input_tokens, total_cost_cents, last_error, created_at, updated_at FROM agent_runtime_state WHERE agent_id = $1",
     )
-    .bind(&params.id)
-        .fetch_optional(&pool)
+    .bind(agent_id)
+    .fetch_optional(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, "Runtime state not found".to_string()))?;
-    Ok(Json(row))
+    {
+        Ok(Some(row)) => return Ok(Json(row)),
+        Ok(None) => {}
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("does not exist") || err_str.contains("relation") {
+                tracing::warn!("GET /api/agents/:id/runtime-state table missing or schema mismatch, returning default: {}", e);
+            } else {
+                tracing::error!("GET /api/agents/:id/runtime-state failed: {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, err_str));
+            }
+        }
+    }
+    let (company_id, adapter_type): (Uuid, String) = sqlx::query_as(
+        "SELECT company_id, adapter_type FROM agents WHERE id = $1",
+    )
+    .bind(agent_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("GET /api/agents/:id/runtime-state (agent lookup) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+    let now = chrono::Utc::now();
+    let default_state = AgentRuntimeState {
+        agent_id,
+        company_id,
+        adapter_type,
+        session_id: None,
+        state_json: serde_json::json!({}),
+        last_run_id: None,
+        last_run_status: None,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        total_cached_input_tokens: 0,
+        total_cost_cents: 0,
+        last_error: None,
+        created_at: now,
+        updated_at: now,
+    };
+    Ok(Json(default_state))
 }
 
 #[derive(Deserialize)]
@@ -684,12 +878,19 @@ pub async fn update_agent(
     Path(params): Path<AgentIdParam>,
     Json(body): Json<UpdateAgentBody>,
 ) -> Result<Json<Agent>, (StatusCode, String)> {
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
     let now = chrono::Utc::now();
     let reports_to: Option<Uuid> = body.reports_to.as_ref().and_then(|s| Uuid::parse_str(s).ok());
     let row = sqlx::query_as::<_, Agent>(
-        "UPDATE agents SET name = COALESCE($2, name), role = COALESCE($3, role), title = COALESCE($4, title), icon = COALESCE($5, icon), status = COALESCE($6, status), reports_to = COALESCE($7, reports_to), capabilities = COALESCE($8, capabilities), adapter_type = COALESCE($9, adapter_type), adapter_config = COALESCE($10, adapter_config), updated_at = $11 WHERE id = $1 RETURNING id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at",
+        "UPDATE agents SET name = COALESCE($2, name), role = COALESCE($3, role), title = COALESCE($4, title), icon = COALESCE($5, icon), status = COALESCE($6, status), reports_to = COALESCE($7, reports_to), capabilities = COALESCE($8, capabilities), adapter_type = COALESCE($9, adapter_type), adapter_config = COALESCE($10, adapter_config), runtime_config = COALESCE($11, runtime_config), updated_at = $12 WHERE id = $1
+         RETURNING id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type,
+         COALESCE(adapter_config, '{}'::jsonb) AS adapter_config,
+         COALESCE(runtime_config, '{}'::jsonb) AS runtime_config,
+         budget_monthly_cents, spent_monthly_cents,
+         COALESCE(permissions, '{}'::jsonb) AS permissions,
+         last_heartbeat_at, metadata, created_at, updated_at",
     )
-    .bind(&params.id)
+    .bind(agent_id)
     .bind(body.name.as_deref())
     .bind(body.role.as_deref())
     .bind(body.title.as_deref())
@@ -699,10 +900,14 @@ pub async fn update_agent(
     .bind(body.capabilities.as_deref())
     .bind(body.adapter_type.as_deref())
     .bind(body.adapter_config.as_ref())
+    .bind(body.runtime_config.as_ref())
     .bind(now)
-        .fetch_optional(&pool)
+    .fetch_optional(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| {
+        tracing::error!("PATCH /api/agents/:id failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?
     .ok_or_else(|| (StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
     Ok(Json(row))
 }
@@ -738,13 +943,24 @@ pub async fn list_agent_keys(
     State(pool): State<PgPool>,
     Path(params): Path<AgentIdParam>,
 ) -> Result<Json<Vec<AgentApiKey>>, (StatusCode, String)> {
-    let rows = sqlx::query_as::<_, AgentApiKey>(
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
+    let rows = match sqlx::query_as::<_, AgentApiKey>(
         "SELECT id, agent_id, company_id, name, last_used_at, revoked_at, created_at FROM agent_api_keys WHERE agent_id = $1 AND revoked_at IS NULL ORDER BY created_at",
     )
-    .bind(&params.id)
+    .bind(agent_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("does not exist") {
+                return Ok(Json(Vec::new()));
+            }
+            tracing::error!("GET /api/agents/:id/keys failed: {}", e);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
+        }
+    };
     Ok(Json(rows))
 }
 
@@ -802,11 +1018,13 @@ pub async fn revoke_agent_key(
     State(pool): State<PgPool>,
     Path(params): Path<AgentKeyIdParam>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let agent_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid agent id".to_string()))?;
+    let key_id = Uuid::parse_str(&params.key_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid key id".to_string()))?;
     let now = chrono::Utc::now();
     let result = sqlx::query("UPDATE agent_api_keys SET revoked_at = $1 WHERE id = $2 AND agent_id = $3")
         .bind(now)
-        .bind(&params.key_id)
-        .bind(&params.id)
+        .bind(key_id)
+        .bind(agent_id)
         .execute(&pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -821,13 +1039,18 @@ pub async fn get_org(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<OrgNode>>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let rows = sqlx::query_as::<_, Agent>(
         "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE company_id = $1 AND status != 'terminated' ORDER BY name",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/org failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     let by_manager: std::collections::HashMap<Option<Uuid>, Vec<Agent>> = {
         let mut m: std::collections::HashMap<Option<Uuid>, Vec<Agent>> = std::collections::HashMap::new();
         for a in rows {
@@ -897,13 +1120,18 @@ pub async fn list_agent_configurations(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<Agent>>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let rows = sqlx::query_as::<_, Agent>(
         "SELECT id, company_id, name, role, title, icon, status, reports_to, capabilities, adapter_type, adapter_config, runtime_config, budget_monthly_cents, spent_monthly_cents, permissions, last_heartbeat_at, metadata, created_at, updated_at FROM agents WHERE company_id = $1 ORDER BY created_at",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/agent-configurations failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 

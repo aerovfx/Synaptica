@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 use serde::Serialize;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -65,6 +65,8 @@ pub async fn list_activity(
     Path(params): Path<CompanyIdParam>,
     Query(query): Query<ListActivityQuery>,
 ) -> Result<Json<Vec<ActivityEntry>>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let agent_id: Option<Uuid> = query.agent_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
     let rows = sqlx::query_as::<_, ActivityEntry>(
         r#"
@@ -78,13 +80,16 @@ pub async fn list_activity(
         LIMIT 200
         "#,
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .bind(agent_id)
     .bind(query.entity_type.as_deref())
     .bind(query.entity_id.as_deref())
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/activity failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 
@@ -182,7 +187,7 @@ pub async fn list_issue_runs(
     Ok(Json(rows))
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunIssueRef {
     pub issue_id: Uuid,
@@ -198,16 +203,20 @@ pub async fn list_run_issues(
     Path(params): Path<RunIdParam>,
 ) -> Result<Json<Vec<RunIssueRef>>, (StatusCode, String)> {
     let run_id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid run id".to_string()))?;
-    let company_id: Option<Uuid> = sqlx::query_scalar("SELECT company_id FROM heartbeat_runs WHERE id = $1")
+    let company_id: Option<Uuid> = sqlx::query_scalar::<_, Option<Uuid>>("SELECT company_id FROM heartbeat_runs WHERE id = $1")
         .bind(run_id)
         .fetch_optional(&pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("GET /api/heartbeat-runs/:id/issues (company lookup) failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .flatten();
     let company_id = match company_id {
         Some(c) => c,
         None => return Ok(Json(Vec::new())),
     };
-    let from_activity = sqlx::query_as::<_, RunIssueRef>(
+    let rows = match sqlx::query(
         r#"
         SELECT DISTINCT ON (i.id) i.id AS issue_id, i.identifier, i.title, i.status, i.priority
         FROM activity_log a
@@ -220,27 +229,60 @@ pub async fn list_run_issues(
     .bind(run_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let context_issue_id: Option<Uuid> = sqlx::query_scalar(
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("GET /api/heartbeat-runs/:id/issues activity query failed: {}", e);
+            return Ok(Json(Vec::new()));
+        }
+    };
+    let mut out: Vec<RunIssueRef> = rows
+        .iter()
+        .filter_map(|row| {
+            let issue_id = row.try_get::<Option<Uuid>, _>("issue_id").ok().flatten().or_else(|| row.try_get::<Uuid, _>("issue_id").ok());
+            issue_id.map(|id| RunIssueRef {
+                issue_id: id,
+                identifier: row.try_get("identifier").ok().flatten(),
+                title: row.try_get("title").ok().flatten(),
+                status: row.try_get("status").ok().flatten(),
+                priority: row.try_get("priority").ok().flatten(),
+            })
+        })
+        .collect();
+    let context_issue_id: Option<Uuid> = sqlx::query_scalar::<_, Option<Uuid>>(
         "SELECT (context_snapshot->>'issueId')::uuid FROM heartbeat_runs WHERE id = $1",
     )
     .bind(run_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let mut out = from_activity;
+    .ok()
+    .flatten()
+    .flatten();
     if let Some(cid) = context_issue_id {
         if !out.iter().any(|r| r.issue_id == cid) {
-            if let Some(row) = sqlx::query_as::<_, RunIssueRef>(
+            let row = sqlx::query(
                 "SELECT id AS issue_id, identifier, title, status, priority FROM issues WHERE company_id = $1 AND id = $2",
             )
             .bind(company_id)
             .bind(cid)
             .fetch_optional(&pool)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-            {
-                out.insert(0, row);
+            .ok()
+            .flatten();
+            if let Some(r) = row {
+                let id = r.try_get::<Option<Uuid>, _>("issue_id").ok().flatten().or_else(|| r.try_get::<Uuid, _>("issue_id").ok());
+                if let Some(id) = id {
+                    out.insert(
+                        0,
+                        RunIssueRef {
+                            issue_id: id,
+                            identifier: r.try_get("identifier").ok().flatten(),
+                            title: r.try_get("title").ok().flatten(),
+                            status: r.try_get("status").ok().flatten(),
+                            priority: r.try_get("priority").ok().flatten(),
+                        },
+                    );
+                }
             }
         }
     }

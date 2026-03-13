@@ -120,7 +120,10 @@ pub async fn list_companies(State(pool): State<PgPool>) -> Result<Json<Vec<Compa
     )
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 
@@ -134,14 +137,51 @@ pub async fn get_company(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Company>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let row = sqlx::query_as::<_, Company>(
         "SELECT id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at FROM companies WHERE id = $1",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .fetch_optional(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
+    .await;
+    let row = match row {
+        Ok(Some(r)) => r,
+        Ok(None) => return Err((StatusCode::NOT_FOUND, "Company not found".to_string())),
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("does not exist") {
+                let base = sqlx::query_as::<_, CompanyBaseRow>(
+                    "SELECT id, name, description, status, budget_monthly_cents, spent_monthly_cents, created_at, updated_at FROM companies WHERE id = $1",
+                )
+                .bind(company_id)
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e2| {
+                    tracing::error!("GET /api/companies/:company_id failed: {}", e2);
+                    (StatusCode::INTERNAL_SERVER_ERROR, e2.to_string())
+                })?
+                .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
+                Company {
+                    id: base.id,
+                    name: base.name,
+                    description: base.description,
+                    status: base.status,
+                    issue_prefix: "PAP".to_string(),
+                    issue_counter: 0,
+                    budget_monthly_cents: base.budget_monthly_cents,
+                    spent_monthly_cents: base.spent_monthly_cents,
+                    require_board_approval_for_new_agents: true,
+                    brand_color: None,
+                    created_at: base.created_at,
+                    updated_at: base.updated_at,
+                }
+            } else {
+                tracing::error!("GET /api/companies/:company_id failed: {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, err_str));
+            }
+        }
+    };
     Ok(Json(row))
 }
 
@@ -220,21 +260,76 @@ pub async fn update_company(
     Path(params): Path<CompanyIdParam>,
     Json(body): Json<UpdateCompanyBody>,
 ) -> Result<Json<Company>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let now = chrono::Utc::now();
     let row = sqlx::query_as::<_, Company>(
         "UPDATE companies SET name = COALESCE($2, name), description = COALESCE($3, description), status = COALESCE($4, status), budget_monthly_cents = COALESCE($5, budget_monthly_cents), updated_at = $6 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .bind(body.name.as_deref())
     .bind(body.description.as_deref())
     .bind(body.status.as_deref())
     .bind(body.budget_monthly_cents)
     .bind(now)
     .fetch_optional(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
+    .await;
+    let row = match row {
+        Ok(Some(r)) => r,
+        Ok(None) => return Err((StatusCode::NOT_FOUND, "Company not found".to_string())),
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("does not exist") {
+                let base = sqlx::query_as::<_, CompanyBaseRow>(
+                    "UPDATE companies SET name = COALESCE($2, name), description = COALESCE($3, description), status = COALESCE($4, status), budget_monthly_cents = COALESCE($5, budget_monthly_cents), updated_at = $6 WHERE id = $1 RETURNING id, name, description, status, budget_monthly_cents, spent_monthly_cents, created_at, updated_at",
+                )
+                .bind(company_id)
+                .bind(body.name.as_deref())
+                .bind(body.description.as_deref())
+                .bind(body.status.as_deref())
+                .bind(body.budget_monthly_cents)
+                .bind(now)
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e2| {
+                    tracing::error!("PATCH /api/companies/:company_id failed: {}", e2);
+                    (StatusCode::INTERNAL_SERVER_ERROR, e2.to_string())
+                })?
+                .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
+                Company {
+                    id: base.id,
+                    name: base.name,
+                    description: base.description,
+                    status: base.status,
+                    issue_prefix: "PAP".to_string(),
+                    issue_counter: 0,
+                    budget_monthly_cents: base.budget_monthly_cents,
+                    spent_monthly_cents: base.spent_monthly_cents,
+                    require_board_approval_for_new_agents: true,
+                    brand_color: None,
+                    created_at: base.created_at,
+                    updated_at: base.updated_at,
+                }
+            } else {
+                tracing::error!("PATCH /api/companies/:company_id failed: {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, err_str));
+            }
+        }
+    };
     Ok(Json(row))
+}
+
+/// Row for companies table with only base columns (migration 0000).
+#[derive(Debug, sqlx::FromRow)]
+struct CompanyBaseRow {
+    id: Uuid,
+    name: String,
+    description: Option<String>,
+    status: String,
+    budget_monthly_cents: i32,
+    spent_monthly_cents: i32,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// POST /api/companies/:companyId/archive
@@ -243,16 +338,56 @@ pub async fn archive_company(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Company>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let now = chrono::Utc::now();
+
     let row = sqlx::query_as::<_, Company>(
         "UPDATE companies SET status = 'archived', updated_at = $2 WHERE id = $1 RETURNING id, name, description, status, issue_prefix, issue_counter, budget_monthly_cents, spent_monthly_cents, require_board_approval_for_new_agents, brand_color, created_at, updated_at",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .bind(now)
     .fetch_optional(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
+    .await;
+
+    let row = match row {
+        Ok(Some(r)) => r,
+        Ok(None) => return Err((StatusCode::NOT_FOUND, "Company not found".to_string())),
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("does not exist") {
+                let base = sqlx::query_as::<_, CompanyBaseRow>(
+                    "UPDATE companies SET status = 'archived', updated_at = $2 WHERE id = $1 RETURNING id, name, description, status, budget_monthly_cents, spent_monthly_cents, created_at, updated_at",
+                )
+                .bind(company_id)
+                .bind(now)
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e2| {
+                    tracing::error!("POST /api/companies/:company_id/archive (fallback) failed: {}", e2);
+                    (StatusCode::INTERNAL_SERVER_ERROR, e2.to_string())
+                })?
+                .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
+                Company {
+                    id: base.id,
+                    name: base.name,
+                    description: base.description,
+                    status: base.status,
+                    issue_prefix: "PAP".to_string(),
+                    issue_counter: 0,
+                    budget_monthly_cents: base.budget_monthly_cents,
+                    spent_monthly_cents: base.spent_monthly_cents,
+                    require_board_approval_for_new_agents: true,
+                    brand_color: None,
+                    created_at: base.created_at,
+                    updated_at: base.updated_at,
+                }
+            } else {
+                tracing::error!("POST /api/companies/:company_id/archive failed: {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, err_str));
+            }
+        }
+    };
     Ok(Json(row))
 }
 
@@ -262,11 +397,16 @@ pub async fn delete_company(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let result = sqlx::query("DELETE FROM companies WHERE id = $1")
-        .bind(&params.company_id)
+        .bind(company_id)
         .execute(&pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("DELETE /api/companies/:company_id failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
     if result.rows_affected() == 0 {
         return Err((StatusCode::NOT_FOUND, "Company not found".to_string()));
     }
@@ -492,6 +632,26 @@ pub async fn import_company(
         }),
     )
     .await
+}
+
+/// POST /api/companies/:company_id/openclaw/invite-prompt — stub (not implemented)
+pub async fn openclaw_invite_prompt(
+    Path(params): Path<CompanyIdParam>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let _company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "invalid_company_id", "message": "Invalid company id" })),
+            )
+        })?;
+    Err((
+        StatusCode::NOT_IMPLEMENTED,
+        Json(json!({
+            "error": "openclaw_invite_prompt_not_implemented",
+            "message": "OpenClaw invite-prompt is not implemented on this server"
+        })),
+    ))
 }
 
 /// GET /api/companies when no DB: return 503

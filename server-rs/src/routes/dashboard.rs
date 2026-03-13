@@ -53,18 +53,18 @@ pub async fn dashboard(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<DashboardResponse>, (StatusCode, String)> {
-    let company_id = &params.company_id;
+    let company_id = uuid::Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
 
-    let company = sqlx::query_scalar::<_, (i32,)>(
-        "SELECT budget_monthly_cents FROM companies WHERE id = $1",
-    )
-    .bind(company_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
-
-    let budget = company.0;
+    let budget: i32 = sqlx::query_scalar("SELECT budget_monthly_cents FROM companies WHERE id = $1")
+        .bind(company_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("GET /api/companies/:company_id/dashboard failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Company not found".to_string()))?;
 
     let agent_rows = sqlx::query_as::<_, (String, i64)>(
         "SELECT status, count(*)::bigint FROM agents WHERE company_id = $1 GROUP BY status",
@@ -72,7 +72,10 @@ pub async fn dashboard(
     .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/dashboard (agents) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     let mut agents_map = std::collections::HashMap::new();
     for (status, count) in agent_rows {
@@ -86,7 +89,10 @@ pub async fn dashboard(
     .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/dashboard (tasks) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     let mut open = 0i64;
     let mut in_progress = 0i64;
@@ -111,7 +117,10 @@ pub async fn dashboard(
     .bind(company_id)
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/dashboard (approvals) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     let stale_cutoff = chrono::Utc::now() - chrono::Duration::hours(1);
     let stale_tasks: i64 = sqlx::query_scalar(
@@ -121,7 +130,10 @@ pub async fn dashboard(
     .bind(stale_cutoff)
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/dashboard (stale_tasks) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     let month_spend: i64 = sqlx::query_scalar(
         "SELECT coalesce(sum(cost_cents), 0)::bigint FROM cost_events WHERE company_id = $1 AND occurred_at >= date_trunc('month', now())",
@@ -129,7 +141,10 @@ pub async fn dashboard(
     .bind(company_id)
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/dashboard (cost_events) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     let utilization = if budget > 0 {
         (month_spend as f64 / budget as f64) * 100.0
@@ -138,7 +153,7 @@ pub async fn dashboard(
     };
 
     Ok(Json(DashboardResponse {
-        company_id: company_id.clone(),
+        company_id: company_id.to_string(),
         agents: AgentCounts {
             active: *agents_map.get("active").unwrap_or(&0),
             running: *agents_map.get("running").unwrap_or(&0),

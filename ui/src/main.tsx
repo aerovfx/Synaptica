@@ -15,9 +15,20 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import "@mdxeditor/editor/style.css";
 import "./index.css";
 
+// On localhost: unregister any existing SW so dev never sees SW 503 for document fetch.
+// Otherwise register SW for production.
+const isLocalhost =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js");
+    if (isLocalhost) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
+      });
+    } else {
+      navigator.serviceWorker.register("/sw.js");
+    }
   });
 }
 

@@ -6,6 +6,7 @@ use axum::Json;
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct CompanyIdParam {
@@ -24,21 +25,28 @@ pub async fn sidebar_badges(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<SidebarBadgesResponse>, (StatusCode, String)> {
-    let cid = &params.company_id;
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let pending_approvals: i64 = sqlx::query_scalar(
         "SELECT count(*)::bigint FROM approvals WHERE company_id = $1 AND status = 'pending'",
     )
-    .bind(cid)
+    .bind(company_id)
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("sidebar_badges (approvals) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     let open_issues: i64 = sqlx::query_scalar(
         "SELECT count(*)::bigint FROM issues WHERE company_id = $1 AND status NOT IN ('done', 'cancelled')",
     )
-    .bind(cid)
+    .bind(company_id)
     .fetch_one(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("sidebar_badges (issues) failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(SidebarBadgesResponse {
         pending_approvals,
         open_issues,
@@ -89,6 +97,7 @@ pub async fn board_claim() -> Json<serde_json::Value> {
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code)]
 pub struct BoardClaimTokenParam {
     pub token: String,
 }
@@ -117,6 +126,7 @@ pub async fn get_board_claim(
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct BoardClaimClaimBody {
     pub code: Option<String>,
 }

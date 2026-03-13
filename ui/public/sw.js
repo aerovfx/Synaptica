@@ -22,7 +22,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Network-first for everything — cache is only an offline fallback
+  // Network-first for everything — cache is only an offline fallback.
+  // respondWith() must receive a Promise that resolves to a Response (never undefined).
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -34,9 +35,9 @@ self.addEventListener("fetch", (event) => {
       })
       .catch(() => {
         if (request.mode === "navigate") {
-          return caches.match("/") || new Response("Offline", { status: 503 });
+          return caches.match("/").then((cached) => cached || new Response("Offline", { status: 503, statusText: "Service Unavailable" }));
         }
-        return caches.match(request);
+        return caches.match(request).then((cached) => cached || new Response("", { status: 503, statusText: "Service Unavailable" }));
       })
   );
 });

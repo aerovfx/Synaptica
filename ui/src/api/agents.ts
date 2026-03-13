@@ -8,7 +8,7 @@ import type {
   Approval,
   AgentConfigRevision,
 } from "@paperclipai/shared";
-import { isUuidLike, normalizeAgentUrlKey } from "@paperclipai/shared";
+import { deriveAgentUrlKey, isUuidLike, normalizeAgentUrlKey } from "@paperclipai/shared";
 import { ApiError, api } from "./client";
 
 export interface AgentKey {
@@ -64,25 +64,29 @@ export const agentsApi = {
     try {
       return await api.get<Agent>(agentPath(id, companyId));
     } catch (error) {
-      // Backward-compat fallback: if backend shortname lookup reports ambiguity,
-      // resolve using company agent list while ignoring terminated agents.
-      if (
-        !(error instanceof ApiError) ||
-        error.status !== 409 ||
-        !companyId ||
-        isUuidLike(id)
-      ) {
-        throw error;
-      }
+      // Fallback when backend returns 400 (id not a UUID) or 409 (ambiguity):
+      // resolve by company agent list using urlKey / derived slug.
+      const isRetryable =
+        error instanceof ApiError &&
+        (error.status === 400 || error.status === 409) &&
+        !!companyId &&
+        !isUuidLike(id);
+      if (!isRetryable) throw error;
 
       const urlKey = normalizeAgentUrlKey(id);
       if (!urlKey) throw error;
 
       const agents = await api.get<Agent[]>(`/companies/${companyId}/agents`);
-      const matches = agents.filter(
-        (agent) => agent.status !== "terminated" && normalizeAgentUrlKey(agent.urlKey) === urlKey,
-      );
-      if (matches.length !== 1) throw error;
+      const agentRef = (a: Agent) =>
+        normalizeAgentUrlKey(a.urlKey ?? deriveAgentUrlKey(a.name, a.id)) === urlKey;
+      const matches = agents
+        .filter((agent) => agent.status !== "terminated" && agentRef(agent))
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+      if (matches.length === 0) throw error;
+      // If multiple agents share the same slug (e.g. names that normalize identically), use the first by createdAt so the page still loads.
       return api.get<Agent>(agentPath(matches[0]!.id, companyId));
     }
   },
@@ -130,7 +134,7 @@ export const agentsApi = {
       `/companies/${companyId}/adapters/${type}/test-environment`,
       data,
     ),
-  invoke: (id: string, companyId?: string) => api.post<HeartbeatRun>(agentPath(id, companyId, "/heartbeat/invoke"), {}),
+  invoke: (id: string, companyId?: string) => api.post<HeartbeatRun>(agentPath(id, companyId, "/invoke"), {}),
   wakeup: (
     id: string,
     data: {

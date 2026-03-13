@@ -71,6 +71,7 @@ export function Issues() {
     queryKey: queryKeys.issues.list(selectedCompanyId!),
     queryFn: () => issuesApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    staleTime: 60_000, // 1 phút — giảm refetch trùng khi focus tab
   });
 
   const updateIssue = useMutation({

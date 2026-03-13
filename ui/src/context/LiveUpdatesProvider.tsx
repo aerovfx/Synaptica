@@ -521,6 +521,7 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
     let closed = false;
     let reconnectAttempt = 0;
     let reconnectTimer: number | null = null;
+    let openDelayTimer: number | null = null;
     let socket: WebSocket | null = null;
 
     const clearReconnect = () => {
@@ -578,11 +579,20 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       };
     };
 
-    connect();
+    // Delay opening so rapid company switches don't open sockets that are closed before connect.
+    const WS_OPEN_DELAY_MS = 120;
+    openDelayTimer = window.setTimeout(() => {
+      openDelayTimer = null;
+      connect();
+    }, WS_OPEN_DELAY_MS);
 
     return () => {
       closed = true;
       clearReconnect();
+      if (openDelayTimer !== null) {
+        window.clearTimeout(openDelayTimer);
+        openDelayTimer = null;
+      }
       if (socket) {
         socket.onopen = null;
         socket.onmessage = null;

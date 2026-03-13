@@ -50,13 +50,18 @@ pub async fn list_approvals(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<Approval>>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let rows = sqlx::query_as::<_, Approval>(
         "SELECT id, company_id, \"type\", requested_by_agent_id, requested_by_user_id, status, payload, decision_note, decided_by_user_id, decided_at, created_at, updated_at FROM approvals WHERE company_id = $1 ORDER BY created_at DESC",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/approvals failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 

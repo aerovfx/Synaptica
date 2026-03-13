@@ -2,12 +2,15 @@
 /**
  * Paperclip dev runner: migration check + Rust server (server-rs).
  * UI: build first with `pnpm --filter @paperclipai/ui build` (or set UI_DIST).
+ * Loads .env from repo root so DATABASE_URL and other vars are available to the
+ * Rust server (which runs with cwd=server-rs and would not see repo root .env).
  */
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -17,6 +20,30 @@ const mode = process.argv[2] === "watch" ? "watch" : "dev";
 const cliArgs = process.argv.slice(3);
 
 const env = { ...process.env };
+
+/** Load KEY=VALUE from repo root .env into env (does not override existing). */
+async function loadEnvFromRepoRoot(targetEnv) {
+  const envPath = path.join(repoRoot, ".env");
+  let content;
+  try {
+    content = await readFile(envPath, "utf8");
+  } catch (e) {
+    if (e.code === "ENOENT") return;
+    throw e;
+  }
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1).replace(/\\n/g, "\n");
+    }
+    if (key) targetEnv[key] = value;
+  }
+}
 
 const pnpmBin = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
@@ -103,6 +130,8 @@ async function maybePreflightMigrations() {
     process.exit(exit.code);
   }
 }
+
+await loadEnvFromRepoRoot(env);
 
 await maybePreflightMigrations();
 

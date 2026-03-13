@@ -47,13 +47,18 @@ pub async fn list_join_requests(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<JoinRequestRow>>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let rows = sqlx::query_as::<_, JoinRequestRow>(
         "SELECT id, company_id, invite_id, request_type, status, agent_name, adapter_type, created_agent_id, approved_by_user_id, approved_at, rejected_by_user_id, rejected_at, created_at, updated_at FROM join_requests WHERE company_id = $1 ORDER BY created_at DESC",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/join-requests failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 

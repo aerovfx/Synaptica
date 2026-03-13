@@ -1,4 +1,5 @@
 mod activity;
+mod adapters;
 mod admin;
 mod agents;
 mod events;
@@ -36,7 +37,7 @@ use sqlx::PgPool;
 
 use self::activity::{create_activity, list_activity, list_issue_activity, list_issue_runs, list_run_issues};
 use self::agents::{create_agent, create_agent_key, delete_agent, get_agent, get_agent_me, get_config_revision, get_org, get_runtime_state, heartbeat_agent, invoke_agent, list_agent_configurations, list_agent_keys, list_agents, list_config_revisions, list_task_sessions, pause_agent, reset_runtime_session, resume_agent, revoke_agent_key, rollback_config_revision, terminate_agent, update_agent, update_runtime_state};
-use self::companies::{archive_company, create_company, delete_company, export_company, get_company, get_company_stats, import_company, list_companies, list_companies_stats, update_company};
+use self::companies::{archive_company, create_company, delete_company, export_company, get_company, get_company_stats, import_company, list_companies, list_companies_stats, openclaw_invite_prompt, update_company};
 use self::dashboard::dashboard;
 use self::goals::{create_goal, delete_goal, get_goal, list_goals, update_goal};
 use self::health::health;
@@ -54,6 +55,7 @@ use self::admin::{demote_instance_admin, get_user_company_access, promote_instan
 use self::heartbeats::{cancel_run, get_run, get_run_log, list_run_events, list_runs, wakeup_agent};
 use self::labels::{create_label, delete_label, list_labels};
 use self::events::{company_events_ws, company_events_ws_no_db, LiveEventBus};
+use self::adapters::{get_adapter_models, post_test_environment};
 use self::llms::{llms_agent_configuration_adapter, llms_agent_configuration_index, llms_agent_icons};
 use self::misc::{board_claim, get_board_claim, get_session, get_skill, llm_config, post_board_claim_claim, sidebar_badges, skills_index};
 
@@ -111,6 +113,7 @@ pub fn api_routes(state: ApiState) -> Router<ApiState> {
         .route("/companies/stats", get(list_companies_stats))
         .route("/companies/:company_id", get(get_company).patch(update_company).delete(delete_company))
         .route("/companies/:company_id/archive", post(archive_company))
+        .route("/companies/:company_id/openclaw/invite-prompt", post(openclaw_invite_prompt))
         .route("/companies/:company_id/stats", get(get_company_stats))
         .route("/companies/:company_id/export", get(export_company))
         .route("/companies/import", post(import_company))
@@ -123,6 +126,8 @@ pub fn api_routes(state: ApiState) -> Router<ApiState> {
         .route("/companies/:company_id/agents", get(list_agents).post(create_agent))
         .route("/companies/:company_id/org", get(get_org))
         .route("/companies/:company_id/agent-configurations", get(list_agent_configurations))
+        .route("/companies/:company_id/adapters/:adapter_type/models", get(get_adapter_models))
+        .route("/companies/:company_id/adapters/:adapter_type/test-environment", post(post_test_environment))
         .route("/agents/me", get(get_agent_me))
         .route("/agents/:id", get(get_agent).patch(update_agent).delete(delete_agent))
         .route("/agents/:id/pause", post(pause_agent))
@@ -230,6 +235,8 @@ pub fn api_routes_no_db() -> Router {
         .route("/companies/:company_id/agents", get(agents::agents_no_db))
         .route("/companies/:company_id/org", get(agents::agents_no_db))
         .route("/companies/:company_id/agent-configurations", get(agents::agents_no_db))
+        .route("/companies/:company_id/adapters/:adapter_type/models", get(get_adapter_models))
+        .route("/companies/:company_id/adapters/:adapter_type/test-environment", post(post_test_environment))
         .route("/agents/me", get(agents::agents_no_db))
         .route("/agents/:id", get(agents::agents_no_db).patch(agents::agents_no_db).delete(agents::agents_no_db))
         .route("/agents/:id/config-revisions", get(agents::agents_no_db))
@@ -240,7 +247,7 @@ pub fn api_routes_no_db() -> Router {
         .route("/agents/:id/keys", get(agents::agents_no_db))
         .route("/companies/:company_id/labels", get(labels::labels_no_db).post(labels::labels_no_db))
         .route("/labels/:label_id", delete(labels::labels_no_db))
-        .route("/companies/:company_id/issues", get(issues::issues_no_db))
+        .route("/companies/:company_id/issues", get(issues::issues_no_db).post(issues::issues_no_db))
         .route("/issues/:id/read", post(issues::issues_no_db))
         .route("/companies/:company_id/approvals", get(approvals::approvals_no_db))
         .route("/approvals/:id", get(approvals::approvals_no_db))

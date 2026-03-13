@@ -30,7 +30,8 @@
     "typecheck": "tsc --noEmit",
     "generate": "tsc -p tsconfig.json && drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "dedupe-agent-slugs": "tsx src/scripts/dedupe-agent-slugs.ts"
   },
   "dependencies": {
     "@paperclipai/shared": "workspace:*",

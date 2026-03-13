@@ -51,13 +51,24 @@ pub async fn list_secrets(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<CompanySecret>>, (StatusCode, String)> {
-    let rows = sqlx::query_as::<_, CompanySecret>(
+    let company_id = Uuid::parse_str(&params.company_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
+    let rows = match sqlx::query_as::<_, CompanySecret>(
         "SELECT id, company_id, name, provider, external_ref, latest_version, description, created_by_agent_id, created_by_user_id, created_at, updated_at FROM company_secrets WHERE company_id = $1 ORDER BY name",
     )
-    .bind(&params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("does not exist") {
+                return Ok(Json(Vec::new()));
+            }
+            tracing::error!("GET /api/companies/:company_id/secrets failed: {}", e);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
+        }
+    };
     Ok(Json(rows))
 }
 
@@ -66,10 +77,11 @@ pub async fn get_secret(
     State(pool): State<PgPool>,
     Path(params): Path<SecretIdParam>,
 ) -> Result<Json<CompanySecret>, (StatusCode, String)> {
+    let id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid secret id".to_string()))?;
     let row = sqlx::query_as::<_, CompanySecret>(
         "SELECT id, company_id, name, provider, external_ref, latest_version, description, created_by_agent_id, created_by_user_id, created_at, updated_at FROM company_secrets WHERE id = $1",
     )
-    .bind(&params.id)
+    .bind(id)
     .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -83,6 +95,7 @@ pub async fn create_secret(
     Path(params): Path<CompanyIdParam>,
     Json(body): Json<CreateSecretBody>,
 ) -> Result<(StatusCode, Json<CompanySecret>), (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let id = Uuid::new_v4();
     let now = chrono::Utc::now();
     let provider = body.provider.as_deref().unwrap_or("local_encrypted");
@@ -90,7 +103,7 @@ pub async fn create_secret(
         "INSERT INTO company_secrets (id, company_id, name, provider, latest_version, description, created_at, updated_at) VALUES ($1, $2, $3, $4, 1, $5, $6, $6) RETURNING id, company_id, name, provider, external_ref, latest_version, description, created_by_agent_id, created_by_user_id, created_at, updated_at",
     )
     .bind(id)
-    .bind(&params.company_id)
+    .bind(company_id)
     .bind(&body.name)
     .bind(provider)
     .bind(&body.description)
@@ -116,11 +129,12 @@ pub async fn update_secret(
     Path(params): Path<SecretIdParam>,
     Json(body): Json<UpdateSecretBody>,
 ) -> Result<Json<CompanySecret>, (StatusCode, String)> {
+    let id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid secret id".to_string()))?;
     let now = chrono::Utc::now();
     let row = sqlx::query_as::<_, CompanySecret>(
         "UPDATE company_secrets SET description = COALESCE($2, description), updated_at = $3 WHERE id = $1 RETURNING id, company_id, name, provider, external_ref, latest_version, description, created_by_agent_id, created_by_user_id, created_at, updated_at",
     )
-    .bind(&params.id)
+    .bind(id)
     .bind(body.description.as_deref())
     .bind(now)
     .fetch_optional(&pool)
@@ -185,8 +199,9 @@ pub async fn delete_secret(
     State(pool): State<PgPool>,
     Path(params): Path<SecretIdParam>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let id = Uuid::parse_str(&params.id).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid secret id".to_string()))?;
     let result = sqlx::query("DELETE FROM company_secrets WHERE id = $1")
-        .bind(&params.id)
+        .bind(id)
         .execute(&pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

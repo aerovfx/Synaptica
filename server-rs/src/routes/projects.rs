@@ -47,13 +47,18 @@ pub async fn list_projects(
     State(pool): State<PgPool>,
     Path(params): Path<CompanyIdParam>,
 ) -> Result<Json<Vec<Project>>, (StatusCode, String)> {
+    let company_id = Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let rows = sqlx::query_as::<_, Project>(
         "SELECT id, company_id, goal_id, name, description, status, lead_agent_id, target_date, color, execution_workspace_policy, archived_at, created_at, updated_at FROM projects WHERE company_id = $1 ORDER BY created_at",
     )
-    .bind(params.company_id)
+    .bind(company_id)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/projects failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 

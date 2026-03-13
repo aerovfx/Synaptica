@@ -127,8 +127,11 @@ pub async fn list_runs(
     Path(params): Path<CompanyIdParam>,
     Query(q): Query<ListRunsQuery>,
 ) -> Result<Json<Vec<HeartbeatRun>>, (StatusCode, String)> {
+    let company_id = uuid::Uuid::parse_str(&params.company_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid company id".to_string()))?;
     let limit = q.limit.unwrap_or(50).min(200);
-    let rows = if let Some(ref agent_id) = q.agent_id {
+    let agent_id_param = q.agent_id.as_ref().and_then(|s| uuid::Uuid::parse_str(s).ok());
+    let rows = if let Some(agent_id) = agent_id_param {
         sqlx::query_as::<_, HeartbeatRun>(
             "SELECT id, company_id, agent_id, invocation_source, trigger_detail, status, started_at, finished_at, \
              error, wakeup_request_id, exit_code, signal, usage_json, result_json, session_id_before, session_id_after, \
@@ -136,7 +139,7 @@ pub async fn list_runs(
              external_run_id, context_snapshot, created_at, updated_at FROM heartbeat_runs \
              WHERE company_id = $1 AND agent_id = $2 ORDER BY created_at DESC LIMIT $3",
         )
-        .bind(&params.company_id)
+        .bind(company_id)
         .bind(agent_id)
         .bind(limit)
     } else {
@@ -147,12 +150,15 @@ pub async fn list_runs(
              external_run_id, context_snapshot, created_at, updated_at FROM heartbeat_runs \
              WHERE company_id = $1 ORDER BY created_at DESC LIMIT $2",
         )
-        .bind(&params.company_id)
+        .bind(company_id)
         .bind(limit)
     }
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/companies/:company_id/heartbeat-runs failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 
@@ -161,16 +167,21 @@ pub async fn get_run(
     State(pool): State<PgPool>,
     Path(params): Path<RunIdParam>,
 ) -> Result<Json<HeartbeatRun>, (StatusCode, String)> {
+    let run_id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid run id".to_string()))?;
     let row: Option<HeartbeatRun> = sqlx::query_as(
         "SELECT id, company_id, agent_id, invocation_source, trigger_detail, status, started_at, finished_at, \
          error, wakeup_request_id, exit_code, signal, usage_json, result_json, session_id_before, session_id_after, \
          log_store, log_ref, log_bytes, log_sha256, log_compressed, stdout_excerpt, stderr_excerpt, error_code, \
          external_run_id, context_snapshot, created_at, updated_at FROM heartbeat_runs WHERE id = $1",
     )
-    .bind(&params.id)
+    .bind(run_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/heartbeat-runs/:id failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     row.map(Json)
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Run not found".to_string()))
 }
@@ -181,18 +192,23 @@ pub async fn list_run_events(
     Path(params): Path<RunIdParam>,
     Query(q): Query<ListEventsQuery>,
 ) -> Result<Json<Vec<HeartbeatRunEvent>>, (StatusCode, String)> {
+    let run_id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid run id".to_string()))?;
     let after_seq = q.after_seq.unwrap_or(0);
     let limit = q.limit.unwrap_or(200).min(500);
     let rows = sqlx::query_as::<_, HeartbeatRunEvent>(
         "SELECT id, company_id, run_id, agent_id, seq, event_type, stream, level, color, message, payload, created_at \
          FROM heartbeat_run_events WHERE run_id = $1 AND seq > $2 ORDER BY seq ASC LIMIT $3",
     )
-    .bind(&params.id)
+    .bind(run_id)
     .bind(after_seq)
     .bind(limit)
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/heartbeat-runs/:id/events failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     Ok(Json(rows))
 }
 
@@ -201,16 +217,21 @@ pub async fn cancel_run(
     State(pool): State<PgPool>,
     Path(params): Path<RunIdParam>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let run_id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid run id".to_string()))?;
     let now = chrono::Utc::now();
     let result = sqlx::query(
         "UPDATE heartbeat_runs SET status = 'cancelled', finished_at = $2, updated_at = $2 \
          WHERE id = $1 AND status IN ('queued', 'running')",
     )
-    .bind(&params.id)
+    .bind(run_id)
     .bind(now)
     .execute(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("POST /api/heartbeat-runs/:id/cancel failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     if result.rows_affected() == 0 {
         return Err((StatusCode::CONFLICT, "Run not found or already finished".to_string()));
     }
@@ -232,13 +253,18 @@ pub async fn get_run_log(
     State(pool): State<PgPool>,
     Path(params): Path<RunIdParam>,
 ) -> Result<Json<RunLogResponse>, (StatusCode, String)> {
+    let run_id = Uuid::parse_str(&params.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid run id".to_string()))?;
     let row: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT id::text, log_store, log_ref FROM heartbeat_runs WHERE id = $1",
     )
-    .bind(&params.id)
+    .bind(run_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        tracing::error!("GET /api/heartbeat-runs/:id/log failed: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     let (run_id, store, log_ref) = row.ok_or_else(|| (StatusCode::NOT_FOUND, "Run not found".to_string()))?;
     Ok(Json(RunLogResponse {
         run_id,

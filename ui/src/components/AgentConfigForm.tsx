@@ -61,6 +61,8 @@ type AgentConfigFormProps = {
   hideInlineSave?: boolean;
   /** "cards" renders each section as heading + bordered card (for settings pages). Default: "inline" (border-b dividers). */
   sectionLayout?: "inline" | "cards";
+  /** When this value changes (e.g. after save success), form clears overlay so displayed values match server. */
+  saveSuccessTrigger?: number;
   /** Create mode only: show only adapter type + essential adapter fields; put the rest in "More options" collapsible. */
   simpleMode?: boolean;
 } & (
@@ -266,6 +268,13 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     }
     return;
   }, [isCreate, isDirty, props.onDirtyChange, props.onSaveActionChange, props.onCancelActionChange, overlay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When parent signals save success (saveSuccessTrigger incremented), clear overlay so form shows server state.
+  useEffect(() => {
+    if (!isCreate && props.saveSuccessTrigger !== undefined && props.saveSuccessTrigger > 0) {
+      setOverlay({ ...emptyOverlay });
+    }
+  }, [isCreate, props.saveSuccessTrigger]);
 
   // ---- Resolve values ----
   const config = !isCreate ? ((props.agent.adapterConfig ?? {}) as Record<string, unknown>) : {};
